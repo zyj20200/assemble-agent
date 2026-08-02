@@ -101,10 +101,16 @@ export function loadAgentsFromDb(db: AppDb, kb: KnowledgeBaseService): AgentDefi
       })
       .filter((x): x is NonNullable<typeof x> => !!x);
 
+    // 提示词解析：模板 content 为底，system_prompt 非空时覆盖（支持模板复用 + 实例覆盖）
+    const promptRow = a.promptId ? db.select().from(schema.prompts).where(eq(schema.prompts.id, a.promptId)).get() : undefined;
+    const systemPrompt = (a.systemPrompt && a.systemPrompt.trim())
+      ? a.systemPrompt
+      : (promptRow?.content ?? '');
+
     defs.push({
       name: a.name,
       description: a.description ?? undefined,
-      systemPrompt: a.systemPrompt,
+      systemPrompt,
       providerId: String(model.providerId),
       modelId: model.modelId,
       temperature: a.temperature ?? undefined,

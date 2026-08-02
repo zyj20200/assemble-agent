@@ -43,6 +43,7 @@
 ├─────────────────────────────────────────────────────────┤
 │  Provider   模型提供方（base_url + api_key + 嵌入模型）      │
 │  Model      具体模型（隶属于 Provider，含温度/长度等默认参数） │
+│  Prompt     提示词模板（可复用，Agent 可引用并可实例覆盖）      │
 │  Skill      技能（名称/描述/Markdown 指令内容，可注入提示词）  │
 │  MCPServer  MCP 服务（stdio 命令 或 HTTP URL）             │
 │  KnowledgeBase  知识库（切块参数 + 嵌入模型 + 文档）          │
@@ -55,7 +56,7 @@ Agent 是组装后的产物，由一条主记录 + 四组关联组成：
 
 ```
 Agent
-├── 系统提示词 system_prompt        （模板，支持占位符，见 §6.5）
+├── 系统提示词 system_prompt        （引用 Prompt 模板 + 实例覆盖，支持占位符，见 §6.5）
 ├── 模型 model                      （必选，1 个）
 ├── 技能 skills                     （多选，N 个）
 ├── MCP 服务 mcp_servers            （多选，N 个）
@@ -199,6 +200,17 @@ Document 1 ──── * Chunk  (Chunk.embedding 向量, Chunk.kb_id 冗余索�
 | enabled | bool | |
 | created_at | datetime | |
 
+**prompts**（提示词模板，可复用组件）
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | int PK | |
+| name | str UNIQUE | |
+| description | str | 用途说明 |
+| content | text | 提示词模板，支持 `{{skills}}`/`{{knowledge}}` 占位符 |
+| enabled | bool | |
+| created_at / updated_at | datetime | |
+
 **mcp_servers**
 
 | 字段 | 类型 | 说明 |
@@ -258,7 +270,8 @@ Document 1 ──── * Chunk  (Chunk.embedding 向量, Chunk.kb_id 冗余索�
 | id | int PK | |
 | name | str UNIQUE | **同时作为 `/v1` API 的 model 名** |
 | description | str | |
-| system_prompt | text | 提示词模板，支持 `{{skills}}`/`{{knowledge}}` 占位符（§6.5） |
+| prompt_id | FK→prompts NULL | 引用的提示词模板（可复用组件） |
+| system_prompt | text NULL | **实例覆盖**：非空时覆盖模板 content（§6.5） |
 | model_id | FK→models | 必选 |
 | temperature / max_tokens | float / int NULL | 覆盖模型默认 |
 | rag_mode | str | `auto`（工具式检索）/ `always`（注入式），默认 `auto` |
@@ -322,6 +335,7 @@ Document 1 ──── * Chunk  (Chunk.embedding 向量, Chunk.kb_id 冗余索�
 | Providers | `GET/POST /api/providers`，`GET/PUT/DELETE /api/providers/{id}` |
 | Models | `GET/POST /api/models`，`GET/PUT/DELETE /api/models/{id}` |
 | Skills | `GET/POST /api/skills`，`GET/PUT/DELETE /api/skills/{id}` |
+| Prompts | `GET/POST /api/prompts`，`GET/PUT/DELETE /api/prompts/{id}` |
 | MCP Servers | `GET/POST /api/mcp-servers`，`GET/PUT/DELETE /api/mcp-servers/{id}`；`POST /api/mcp-servers/{id}/test`（连通性/工具列表探测） |
 | Knowledge Bases | `GET/POST /api/knowledge-bases`，`GET/PUT/DELETE /api/knowledge-bases/{id}` |
 | Documents | `POST /api/knowledge-bases/{id}/documents`（multipart 上传，自动切块嵌入）；`GET/DELETE /api/documents/{id}` |
@@ -451,7 +465,7 @@ Document 1 ──── * Chunk  (Chunk.embedding 向量, Chunk.kb_id 冗余索�
 
 | 视图 | 内容 |
 | --- | --- |
-| **装配台**（主视图） | 三栏「资源库点选 → 总线接线 → 对外接口」：① **资源库**：五类组件以图纸风 checkbox/radio 点选接线（模型、提示词单选必选；MCP、技能、知识库多选），实时计数；② **装配台**：墨青总线 + 5 个接线 slot（MODEL/PROMPT/MCP/SKILL/KNOWLEDGE，彩色线 + 针脚圆点），已接入组件显示 chip 可断开；PROMPT 内嵌提示词预览 + 运行时注入说明（`<skills>`/`<knowledge>`/边界声明）；底部「过程事件透出」开关 + 工具轮次滑杆 + 预算闸 + **发布智能体**按钮（slug 格式与必选项校验）；③ **对外接口**：tab = 接入示例（curl + OpenAI SDK，`model=agent:{slug}` 实时生成）/ 装配 JSON 快照 / 试运行（模拟 SSE 流式回答 + 工具调用/技能加载/知识检索过程事件轨迹 + usage） |
+| **装配台**（主视图） | 三栏「资源库点选 → 总线接线 → 对外接口」：① **资源库**：五类组件以图纸风 checkbox/radio 点选接线（模型、提示词单选必选；MCP、技能、知识库多选），实时计数；② **装配台**：墨青总线 + 6 个接线 slot（MODEL/PROMPT/MCP/SKILL/KNOWLEDGE/自定义提示词，彩色线 + 针脚圆点），已接入组件显示 chip 可断开；PROMPT 内嵌提示词预览 + 运行时注入说明（`<skills>`/`<knowledge>`/边界声明）；底部「过程事件透出」开关 + 工具轮次滑杆 + 预算闸 + **发布智能体**按钮（slug 格式与必选项校验）；③ **对外接口**：tab = 接入示例（curl + OpenAI SDK，`model=agent:{slug}` 实时生成）/ 装配 JSON 快照 / 试运行（模拟 SSE 流式回答 + 工具调用/技能加载/知识检索过程事件轨迹 + usage） |
 | **资源库** | 五类组件以 **5 个 tab** 切换（每次仅显示一个模块，tab 带专属线色 + 条目计数）：每行「编辑 / 删除」均可用——**编辑**弹出预填表单模态框（保存后表格与装配台资源库同步更新，改名即时生效）；**删除**带 confirm 确认并从装配台同步移除；「＋ 新增」模态框校验名称必填，保存后同步进装配台资源库；MCP 模块含「测试连接」展开工具清单、知识库模块含「检索调试」演示 RAG 命中 |
 | **Agents** | 已发布装配卡片列表（名称 / slug / MODEL·PROMPT·MCP·SKILL·KNOWLEDGE 五线清单 / 发布状态），每张卡片「**▶ 运行测试**」：弹出该 Agent 专属测试对话模态框，**按该 Agent 真实组件配置**动态模拟（工具调用 / 技能加载 / 知识检索轨迹 + 流式打字回答 + `usage · model=agent:{slug}` 统计）；另有编辑 / 删除操作 |
 

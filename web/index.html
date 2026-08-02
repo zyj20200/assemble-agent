@@ -154,6 +154,10 @@
           <div id="pick-models" class="pick-empty">加载中…</div>
         </div>
         <div class="picker">
+          <div class="title"><span class="dot" style="background:var(--w-prompt)"></span>PROMPT · 单选（可选，模板）</div>
+          <div id="pick-prompts" class="pick-empty">加载中…</div>
+        </div>
+        <div class="picker">
           <div class="title"><span class="dot" style="background:var(--w-skill)"></span>SKILL · 多选</div>
           <div id="pick-skills" class="pick-empty">加载中…</div>
         </div>
@@ -173,7 +177,7 @@
         <div class="field"><label>AGENT NAME（= /v1 的 model 名）</label>
           <input type="text" id="agentName" placeholder="如：客服小助手">
         </div>
-        <div class="field"><label>SYSTEM PROMPT（模板，支持 {{skills}} 占位符）</label>
+        <div class="field"><label>SYSTEM PROMPT（选中模板后自动预填，可修改覆盖；支持 {{skills}} 占位符）</label>
           <textarea id="systemPrompt" placeholder="你是…。需要事实依据时调用知识库检索。">{{skills}}</textarea>
         </div>
         <div class="params-grid">
@@ -260,7 +264,7 @@ window.addEventListener('error', e => window.__errs.push(e.message + ' @' + (e.l
    ============================================================ */
 const $ = (sel) => document.querySelector(sel);
 const W = { model:'#245A8D', prompt:'#A03A3A', mcp:'#0F7A5A', skill:'#8A5A24', kb:'#6B4B8A' };
-const stateKeyOf = (k) => k === 'mcp' ? 'mcps' : k === 'kb' ? 'kbs' : k;
+const stateKeyOf = (k) => k === 'mcp' ? 'mcps' : k === 'kb' ? 'kbs' : k; // prompts → state.prompts
 
 /* ---------- 通用 ---------- */
 async function api(path, opts={}) {
@@ -288,17 +292,18 @@ function modal(html) { $('#modalRoot').innerHTML = `<div class="modal-mask" oncl
 function closeModal() { $('#modalRoot').innerHTML = ''; }
 
 /* ---------- 状态 ---------- */
-let state = { providers:[], models:[], skills:[], mcps:[], kbs:[], agents:[] };
+let state = { providers:[], models:[], skills:[], mcps:[], kbs:[], prompts:[], agents:[] };
 async function refreshAll() {
-  const [providers, models, skills, mcps, kbs, agents] = await Promise.all([
+  const [providers, models, skills, mcps, kbs, prompts, agents] = await Promise.all([
     api('/api/providers').then(d => d.items),
     api('/api/models').then(d => d.items),
     api('/api/skills').then(d => d.items),
     api('/api/mcp-servers').then(d => d.items),
     api('/api/knowledge-bases').then(d => d.items),
+    api('/api/prompts').then(d => d.items),
     api('/api/agents').then(d => d.items),
   ]);
-  state = { providers, models, skills, mcps, kbs, agents };
+  state = { providers, models, skills, mcps, kbs, prompts, agents };
 }
 async function refreshStatus() {
   try {
@@ -330,7 +335,7 @@ window.addEventListener('hashchange', () => showView(location.hash.slice(1)));
 /* ============================================================
    装配台
    ============================================================ */
-let sel = { model:null, skills:[], mcps:[], kbs:[] };
+let sel = { model:null, prompt:null, skills:[], mcps:[], kbs:[] };
 
 function renderAssembly() {
   // 模型单选
@@ -343,6 +348,13 @@ function renderAssembly() {
         return `<div class="pick-item"><input type="radio" name="pmodel" value="${m.id}" ${sel.model===m.id?'checked':''} onchange="sel.model=Number(this.value);renderAssembly()">
           <span>${esc(m.name)}</span><span class="meta">${esc(p?.name??'')} · ${esc(m.modelId)}</span></div>`;
       }).join('');
+  // 提示词模板单选（可选）：选中 → 预填文本框（可覆盖）
+  $('#pick-prompts').innerHTML = state.prompts.length === 0
+    ? `<div class="pick-empty">暂无模板 · <a onclick="showView('library')">去资源库添加</a></div>`
+    : `<div class="pick-item"><input type="radio" name="pprompt" value="" ${sel.prompt===null?'checked':''} onchange="sel.prompt=null;renderAssembly()">
+        <span>（自定义输入）</span></div>` +
+      state.prompts.map(pt => `<div class="pick-item"><input type="radio" name="pprompt" value="${pt.id}" ${sel.prompt===pt.id?'checked':''} onchange="pickPrompt(${pt.id})">
+        <span style="color:var(--w-prompt)">${esc(pt.name)}</span><span class="meta">${esc(pt.description??'')}</span></div>`).join('');
   // 多选
   const multi = (list, key, wire) => list.length === 0
     ? `<div class="pick-empty">暂无 · <a onclick="showView('library')">去添加</a></div>`
@@ -352,6 +364,12 @@ function renderAssembly() {
   $('#pick-mcps').innerHTML   = multi(state.mcps,   'mcps',   W.mcp);
   $('#pick-kbs').innerHTML    = multi(state.kbs,    'kbs',    W.kb);
   renderSlots();
+}
+function pickPrompt(id) {
+  sel.prompt = id;
+  const pt = state.prompts.find(x => x.id === id);
+  if (pt) $('#systemPrompt').value = pt.content; // 预填模板内容，用户可修改覆盖
+  renderAssembly();
 }
 function toggleSel(key, id, on) {
   const arr = sel[key];
@@ -389,7 +407,9 @@ function renderSlots() {
   $('#slot-model').innerHTML = sel.model
     ? (() => { const m = state.models.find(x => x.id === sel.model); return `<span style="border-color:${W.model};color:${W.model}">${esc(m?.name??sel.model)}<b onclick="sel.model=null;renderAssembly()">✕</b></span>`; })()
     : '<span style="color:var(--ink-soft)">— 未接线</span>';
-  $('#slot-prompt').innerHTML = '<span style="color:var(--w-prompt)">system_prompt 模板</span>';
+  $('#slot-prompt').innerHTML = sel.prompt
+    ? (() => { const pt = state.prompts.find(x => x.id === sel.prompt); return `<span style="border-color:${W.prompt};color:${W.prompt}">${esc(pt?.name ?? sel.prompt)}<b onclick="sel.prompt=null;renderAssembly()">✕</b></span>`; })()
+    : '<span style="color:var(--w-prompt)">自定义 system_prompt</span>';
   $('#slot-mcp').innerHTML    = chip(W.mcp,    state.mcps.filter(x => sel.mcps.includes(x.id)), 'mcps');
   $('#slot-skill').innerHTML  = chip(W.skill,  state.skills.filter(x => sel.skills.includes(x.id)), 'skills');
   $('#slot-kb').innerHTML     = chip(W.kb,     state.kbs.filter(x => sel.kbs.includes(x.id)), 'kbs');
@@ -409,9 +429,14 @@ async function publishAgent() {
   log.textContent = '';
   if (!name) return toast('请输入 Agent 名称');
   if (!sel.model) return toast('请选择模型');
+  if (!sel.prompt && !sp) return toast('请选择提示词模板或填写系统提示词');
+  // 选中模板且文本框未修改 → 纯模板引用（不存覆盖）；修改过 → 作为覆盖
+  const promptTpl = state.prompts.find(x => x.id === sel.prompt);
+  const isTplUnchanged = sel.prompt && promptTpl && sp === promptTpl.content.trim();
   const body = {
     name,
-    system_prompt: sp || '你是一个乐于助人的助手。',
+    system_prompt: sp && !isTplUnchanged ? sp : undefined,
+    prompt_id: sel.prompt ?? undefined,
     model_id: sel.model,
     skill_ids: sel.skills,
     mcp_server_ids: sel.mcps,
@@ -566,6 +591,21 @@ const LIB = {
     remove: id => api(`/api/models/${id}`, { method:'DELETE' }),
     row: m => [m.name, m.modelId, state.providers.find(p => p.id === m.providerId)?.name ?? m.providerId, m.temperature ?? '—', m.enabled ? '✓' : '✗'],
   },
+  prompts: {
+    label: '提示词模板', wire: W.prompt,
+    cols: ['name','description','content','enabled'],
+    headers: ['名称','说明','内容','启用'],
+    form: [
+      { k:'name', label:'名称', required:true },
+      { k:'description', label:'用途说明' },
+      { k:'content', label:'提示词模板（支持 {{skills}} 占位符）', type:'textarea', required:true },
+      { k:'enabled', label:'启用', type:'select', opts:[[true,'是'],[false,'否']] },
+    ],
+    create: b => api('/api/prompts', { method:'POST', body: JSON.stringify(b) }),
+    update: (id,b) => api(`/api/prompts/${id}`, { method:'PUT', body: JSON.stringify(b) }),
+    remove: id => api(`/api/prompts/${id}`, { method:'DELETE' }),
+    row: p => [p.name, p.description ?? '—', p.content.length > 40 ? p.content.slice(0,40)+'…' : p.content, p.enabled ? '✓' : '✗'],
+  },
   skills: {
     label: '技能', wire: W.skill,
     cols: ['name','description','content','enabled'],
@@ -624,7 +664,7 @@ const LIB = {
     row: k => [k.name, k.chunkSize, k.topK, k.minScore, '—'],
   },
 };
-const LIB_KEYS = ['providers','models','skills','mcp','kb'];
+const LIB_KEYS = ['providers','models','prompts','skills','mcp','kb'];
 let libTab = 'providers';
 
 function renderLibrary() {
@@ -770,6 +810,7 @@ function renderAgents() {
       <div class="desc">${esc(a.description ?? '')}</div>
       <div class="lines">
         ${line(W.model, 'MODEL', [model ? `${model.name} (${model.modelId})` : `#${a.modelId}`])}
+        ${line(W.prompt, 'PROMPT', [a.prompt ? a.prompt.name : (a.systemPrompt ? '自定义' : '—')])}
         ${line(W.skill, 'SKILL', (a.skills ?? []).map(s => s.name))}
         ${line(W.mcp, 'MCP', (a.mcp_servers ?? []).map(s => s.name))}
         ${line(W.kb, 'KNOWLEDGE', (a.knowledge_bases ?? []).map(k => k.name))}
@@ -863,6 +904,7 @@ function editAgent(id, name) {
   $('#ragMode').value = a.ragMode ?? 'auto';
   $('#maxToolRounds').value = a.maxToolRounds ?? '';
   sel.model = a.modelId;
+  sel.prompt = a.promptId ?? null;
   sel.skills = (a.skills ?? []).map(s => s.id);
   sel.mcps = (a.mcp_servers ?? []).map(s => s.id);
   sel.kbs = (a.knowledge_bases ?? []).map(k => k.id);

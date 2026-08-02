@@ -44,6 +44,16 @@ export const skills = sqliteTable('skills', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().$defaultFn(now),
 });
 
+export const prompts = sqliteTable('prompts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull().unique(),
+  description: text('description'),
+  content: text('content').notNull(),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().$defaultFn(now),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull().$defaultFn(now),
+});
+
 export const mcpServers = sqliteTable('mcp_servers', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull().unique(),
@@ -114,7 +124,9 @@ export const agents = sqliteTable('agents', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull().unique(),
   description: text('description'),
-  systemPrompt: text('system_prompt').notNull(),
+  /** 关联的提示词模板（可复用组件）；system_prompt 为非空时覆盖模板 */
+  promptId: integer('prompt_id').references(() => prompts.id, { onDelete: 'set null' }),
+  systemPrompt: text('system_prompt'),
   modelId: integer('model_id')
     .notNull()
     .references(() => models.id, { onDelete: 'restrict' }),

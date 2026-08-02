@@ -241,6 +241,55 @@ export function createManagementApp(deps: ManagementDeps): Hono {
     return c.body(null, 204);
   });
 
+  // ---------- Prompt 模板 ----------
+  app.get('/api/prompts', (c) => {
+    const rows = db.select().from(schema.prompts).all();
+    return c.json({ items: rows, total: rows.length });
+  });
+  app.post('/api/prompts', async (c) => {
+    const body = (await c.req.json()) as Record<string, unknown>;
+    const name = requireName(body, 'name', 'content');
+    try {
+      const row = db
+        .insert(schema.prompts)
+        .values({
+          name,
+          description: typeof body.description === 'string' ? body.description : null,
+          content: String(body.content),
+          enabled: body.enabled !== false,
+        })
+        .returning()
+        .get();
+      return c.json(row, 201);
+    } catch (err) {
+      if (isUniqueError(err)) throw ApiErrors.invalidRequest(`提示词模板名已存在: ${name}`);
+      throw err;
+    }
+  });
+  app.put('/api/prompts/:id', async (c) => {
+    const id = Number(c.req.param('id'));
+    if (!db.select().from(schema.prompts).where(eq(schema.prompts.id, id)).get()) throw notFound('Prompt', id);
+    const body = (await c.req.json()) as Record<string, unknown>;
+    const row = db
+      .update(schema.prompts)
+      .set({
+        ...(typeof body.name === 'string' ? { name: body.name } : {}),
+        ...(typeof body.description === 'string' ? { description: body.description } : {}),
+        ...(typeof body.content === 'string' ? { content: body.content } : {}),
+        ...(typeof body.enabled === 'boolean' ? { enabled: body.enabled } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.prompts.id, id))
+      .returning()
+      .get();
+    return c.json(row);
+  });
+  app.delete('/api/prompts/:id', (c) => {
+    const id = Number(c.req.param('id'));
+    db.delete(schema.prompts).where(eq(schema.prompts.id, id)).run();
+    return c.body(null, 204);
+  });
+
   // ---------- MCP Servers ----------
   app.get('/api/mcp-servers', (c) => {
     const rows = db.select().from(schema.mcpServers).all();
@@ -467,7 +516,16 @@ export function createManagementApp(deps: ManagementDeps): Hono {
   });
   app.post('/api/agents', async (c) => {
     const body = (await c.req.json()) as Record<string, unknown>;
-    const name = requireName(body, 'name', 'system_prompt');
+    const name = requireName(body, 'name');
+    if (typeof body.system_prompt !== 'string' && body.prompt_id === undefined) {
+      throw ApiErrors.invalidRequest('system_prompt 或 prompt_id 至少提供一项');
+    }
+    if (body.prompt_id !== undefined && body.prompt_id !== null) {
+      const pid = Number(body.prompt_id);
+      if (!db.select().from(schema.prompts).where(eq(schema.prompts.id, pid)).get()) {
+        throw ApiErrors.invalidRequest(`提示词模板不存在: ${pid}`);
+      }
+    }
     const modelId = Number(body.model_id);
     if (!db.select().from(schema.models).where(eq(schema.models.id, modelId)).get()) {
       throw ApiErrors.invalidRequest(`模型不存在: ${modelId}`);
@@ -485,7 +543,8 @@ export function createManagementApp(deps: ManagementDeps): Hono {
         .values({
           name,
           description: typeof body.description === 'string' ? body.description : null,
-          systemPrompt: String(body.system_prompt),
+          promptId: body.prompt_id !== undefined && body.prompt_id !== null ? Number(body.prompt_id) : null,
+          systemPrompt: typeof body.system_prompt === 'string' && body.system_prompt.trim() ? body.system_prompt : null,
           modelId,
           temperature: typeof body.temperature === 'number' ? body.temperature : null,
           maxTokens: typeof body.max_tokens === 'number' ? body.max_tokens : null,
@@ -519,6 +578,12 @@ export function createManagementApp(deps: ManagementDeps): Hono {
         throw ApiErrors.invalidRequest(`模型不存在: ${modelId}`);
       }
     }
+    if (body.prompt_id !== undefined && body.prompt_id !== null) {
+      const pid = Number(body.prompt_id);
+      if (!db.select().from(schema.prompts).where(eq(schema.prompts.id, pid)).get()) {
+        throw ApiErrors.invalidRequest(`提示词模板不存在: ${pid}`);
+      }
+    }
     // 关联组件整体替换（DESIGN.md 组装规则：列表字段整体替换）
     if (body.skill_ids !== undefined || body.mcp_server_ids !== undefined || body.knowledge_base_ids !== undefined) {
       const skillIds = assertIdArray(body.skill_ids ?? [], 'skill_ids');
@@ -538,6 +603,7 @@ export function createManagementApp(deps: ManagementDeps): Hono {
         ...(typeof body.name === 'string' ? { name: body.name } : {}),
         ...(typeof body.description === 'string' ? { description: body.description } : {}),
         ...(typeof body.system_prompt === 'string' ? { systemPrompt: body.system_prompt } : {}),
+        ...(body.prompt_id !== undefined ? { promptId: body.prompt_id === null ? null : Number(body.prompt_id) } : {}),
         ...(body.model_id !== undefined ? { modelId: Number(body.model_id) } : {}),
         ...(body.temperature !== undefined ? { temperature: body.temperature as number } : {}),
         ...(body.max_tokens !== undefined ? { maxTokens: body.max_tokens as number } : {}),
@@ -582,6 +648,7 @@ function loadAgentDetail(db: AppDb, id: number) {
   const agent = db.select().from(schema.agents).where(eq(schema.agents.id, id)).get();
   if (!agent) return undefined;
   const model = db.select().from(schema.models).where(eq(schema.models.id, agent.modelId)).get();
+  const prompt = agent.promptId ? db.select().from(schema.prompts).where(eq(schema.prompts.id, agent.promptId)).get() : undefined;
   const skills = db
     .select({ id: schema.skills.id, name: schema.skills.name })
     .from(schema.agentSkills)
@@ -602,6 +669,7 @@ function loadAgentDetail(db: AppDb, id: number) {
     .all();
   return {
     ...agent,
+    prompt: prompt ? { id: prompt.id, name: prompt.name } : null,
     model: model ? { id: model.id, name: model.name, modelId: model.modelId } : null,
     skills,
     mcp_servers: mcpServers,

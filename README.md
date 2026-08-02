@@ -25,9 +25,9 @@
 
 ## ✨ 功能特性
 
-- **零代码组装**：新 Agent = 数据库里一行配置，无需发版。五类可复用组件：
+- **零代码组装**：新 Agent = 数据库里一行配置，无需发版。可复用组件：
   - **Model** — 任意 OpenAI 兼容端点（DeepSeek / 通义 / vLLM / Ollama / 网关…）
-  - **System Prompt** — 模板，支持 `{{skills}}` 占位符
+  - **Prompt 模板** — 可复用提示词模板（支持 `{{skills}}` 占位符），Agent 引用并可实例覆盖
   - **Skill** — Markdown 指令包，注入系统提示词
   - **MCP Server** — stdio / Streamable HTTP，工具自动包装进 Agent 循环
   - **Knowledge Base** — 上传文档自动切块嵌入，模型按需检索（工具式 RAG）

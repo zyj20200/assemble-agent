@@ -131,6 +131,48 @@ describe('管理 API: Skills', () => {
   });
 });
 
+describe('管理 API: Prompt 模板', () => {
+  it('CRUD + 重名 400', async () => {
+    const { res, json } = await api('POST', '/api/prompts', {
+      name: '客服模板',
+      description: '客服通用',
+      content: '你是客服。\n{{skills}}',
+    });
+    assert.equal(res.status, 201);
+    const p = await json();
+    assert.equal((await api('POST', '/api/prompts', { name: '客服模板', content: 'x' })).res.status, 400);
+    const upd = await (await api('PUT', `/api/prompts/${p.id}`, { content: '新模板' })).json();
+    assert.equal(upd.content, '新模板');
+    const list = (await (await api('GET', '/api/prompts')).json()) as any;
+    assert.equal(list.total, 1);
+    assert.equal((await api('DELETE', `/api/prompts/${p.id}`)).res.status, 204);
+  });
+
+  it('Agent 引用模板：模板 content 生效；system_prompt 覆盖优先', async () => {
+    // 准备 model
+    const pid = (await (await api('POST', '/api/providers', { name: 'pp', base_url: 'http://x' })).json()).id;
+    const mid = (await (await api('POST', '/api/models', { name: 'pm', provider_id: pid, model_id: 'pm' })).json()).id;
+    const tmpl = (await (await api('POST', '/api/prompts', { name: '客服', content: '模板内容：你是客服。' })).json()).id;
+
+    // 仅模板
+    const a1 = await (await api('POST', '/api/agents', { name: '用模板', model_id: mid, prompt_id: tmpl })).json();
+    assert.equal(a1.prompt?.name, '客服');
+    assert.equal(a1.systemPrompt, null, '未覆盖时 systemPrompt 为空');
+
+    // 模板 + 覆盖
+    const a2 = await (await api('POST', '/api/agents', { name: '覆盖模板', model_id: mid, prompt_id: tmpl, system_prompt: '覆盖内容' })).json();
+    assert.equal(a2.systemPrompt, '覆盖内容');
+
+    // 引用不存在的模板 → 400
+    const bad = await api('POST', '/api/agents', { name: 'bad', model_id: mid, prompt_id: 999 });
+    assert.equal(bad.res.status, 400);
+
+    // 两者都缺 → 400
+    const none = await api('POST', '/api/agents', { name: 'none', model_id: mid });
+    assert.equal(none.res.status, 400);
+  });
+});
+
 describe('管理 API: MCP Servers', () => {
   it('stdio 需 command；http 需 url', async () => {
     const r1 = await api('POST', '/api/mcp-servers', { name: 'bad-stdio', transport: 'stdio' });
