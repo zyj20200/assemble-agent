@@ -23,6 +23,7 @@ import type { AssistantMessage, ToolCall } from '@earendil-works/pi-ai';
 import { assembleAgent, type AgentDefinition } from '../core/agent/assemble.ts';
 import type { ModelRegistry } from '../core/models.ts';
 import { ApiError, ApiErrors } from './errors.ts';
+import { McpManager } from '../core/mcp.ts';
 
 // ---------------------------------------------------------------------------
 // 类型
@@ -56,6 +57,8 @@ export interface OpenAiCompatDeps {
   getAgent: (name: string) => AgentDefinition | undefined;
   /** 已启用 Agent 名列表（/v1/models） */
   listAgents: () => string[];
+  /** MCP 管理器（装配时拉取工具） */
+  mcp?: McpManager;
 }
 
 // ---------------------------------------------------------------------------
@@ -245,14 +248,17 @@ export function createOpenAiCompatApp(deps: OpenAiCompatDeps): Hono {
       throw ApiErrors.invalidRequest('messages 中至少需要一条非 system 消息');
     }
 
-    const serverTools = assembleServerTools(def);
-    const { placeholders, clientNames } = clientToolPlaceholders(body.tools ?? [], serverTools.names);
-
-    const agent = assembleAgent(def, {
+    const agent = await assembleAgent(def, {
       registry: deps.registry,
-      extraTools: placeholders,
+      mcp: deps.mcp,
       systemPromptOverride: systemPrompt,
     });
+    // 服务端工具名（kb + MCP）从 Agent 实际装配结果取，用于区分客户端工具
+    const serverToolNames = new Set(agent.state.tools.map((t) => t.name));
+    const { placeholders, clientNames } = clientToolPlaceholders(body.tools ?? [], serverToolNames);
+    if (placeholders.length > 0) {
+      agent.state.tools = [...agent.state.tools, ...placeholders];
+    }
 
     if (!body.stream) {
       return await runNonStream({ c, agent, messages: agentMessages, model: body.model, clientNames });
@@ -266,18 +272,6 @@ export function createOpenAiCompatApp(deps: OpenAiCompatDeps): Hono {
 // ---------------------------------------------------------------------------
 // 实现细节
 // ---------------------------------------------------------------------------
-
-interface ToolSets {
-  names: Set<string>;
-}
-
-function assembleServerTools(def: AgentDefinition): ToolSets {
-  // Agent 的服务端工具集（kb-tool 等）；MCP 接入后在此扩展。
-  // assembleAgent 内部会按 def 装配 kb-tool，这里只需名字集合用于区分客户端工具。
-  const names = new Set<string>();
-  if (def.knowledgeBase) names.add('search_knowledge');
-  return { names };
-}
 
 const isClientTool =
   (clientNames: Set<string>) =>

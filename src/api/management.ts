@@ -10,6 +10,7 @@ import { eq } from 'drizzle-orm';
 import type { AppDb } from '../db/index.ts';
 import { schema } from '../db/index.ts';
 import type { KnowledgeBaseService } from '../core/kb-service.ts';
+import { McpManager, type McpServerConfig } from '../core/mcp.ts';
 import { ApiError, ApiErrors } from './errors.ts';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -18,6 +19,7 @@ import path from 'node:path';
 export interface ManagementDeps {
   db: AppDb;
   kb: KnowledgeBaseService;
+  mcp?: McpManager;
 }
 
 // ---------------------------------------------------------------------------
@@ -62,7 +64,7 @@ const requireName = (body: Record<string, unknown>, ...fields: string[]): string
 // ---------------------------------------------------------------------------
 
 export function createManagementApp(deps: ManagementDeps): Hono {
-  const { db, kb } = deps;
+  const { db, kb, mcp } = deps;
   const app = new Hono();
 
   // ---------- Providers ----------
@@ -302,12 +304,32 @@ export function createManagementApp(deps: ManagementDeps): Hono {
     db.delete(schema.mcpServers).where(eq(schema.mcpServers.id, id)).run();
     return c.body(null, 204);
   });
-  // 测试连接：MVP 返回占位（M4 接入真实 MCP 后实现）
-  app.post('/api/mcp-servers/:id/test', (c) => {
+  // 测试连接：建连 + listTools（超时 15s）
+  app.post('/api/mcp-servers/:id/test', async (c) => {
     const id = Number(c.req.param('id'));
     const row = db.select().from(schema.mcpServers).where(eq(schema.mcpServers.id, id)).get();
     if (!row) throw notFound('MCPServer', id);
-    return c.json({ ok: true, message: '连接测试将在 M4（MCP 接入）实现', server: row.name, tools: [] });
+    if (!mcp) throw ApiErrors.internal('MCP 管理器未初始化');
+    const config: McpServerConfig = {
+      id: row.id,
+      name: row.name,
+      transport: row.transport,
+      command: row.command,
+      args: jsonParse(row.args),
+      env: jsonParse(row.env),
+      url: row.url,
+      headers: jsonParse(row.headers),
+    };
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(ApiErrors.invalidRequest('MCP 连接测试超时（>15s）')), 15_000),
+    );
+    try {
+      const result = await Promise.race([mcp.test(config), timeout]);
+      return c.json(result);
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+      throw ApiErrors.invalidRequest(`连接失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
   });
 
   // ---------- Knowledge Bases ----------

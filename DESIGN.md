@@ -381,12 +381,12 @@ Document 1 ──── * Chunk  (Chunk.embedding 向量, Chunk.kb_id 冗余索�
 - 用量/成本：`message.usage`（input/output tokens + cost），管理页试运行展示。
 - 错误映射：pi-ai 错误事件（`stopReason: error/aborted`）→ OpenAI 风格错误码。
 
-### 6.3 MCP 接入（@modelcontextprotocol/sdk TS）
+### 6.3 MCP 接入（@modelcontextprotocol/sdk TS）✅ 已落地（`src/core/mcp.ts`）
 
-- **transport=stdio**：`StdioClientTransport(command, args, env)` → `Client` → `listTools()`。进程生命周期由运行时管理。
+- **transport=stdio**：`StdioClientTransport(command, args, env)` → `Client` → `listTools()`。进程生命周期由运行时管理（`stderr: 'ignore'` 防句柄泄漏）。
 - **transport=http**：`StreamableHTTPClientTransport(url, headers)`，用于远程服务。
 - 工具发现：`client.listTools()` → 每个 tool 包装为 AgentTool：
-  - `name`：为避免跨 server 冲突，运行时内部使用 `{server_name}__{tool_name}`；对外 OpenAI tools 用原始名（若重名，后注册的加前缀），映射表记录真实调用目标。
+  - `name`：为避免跨 server 冲突且满足 OpenAI 工具名规范 `^[a-zA-Z0-9_-]+$`，使用 `mcp{server_id}__{tool}`（中文名 server 前缀会被上游 400）。
   - `inputSchema`：直接透传 MCP 的 JSON Schema → typebox（或转换）。
 - 工具调用：`client.callTool(name, arguments)` → 结果（含 `isError`、文本/图片内容）序列化为文本回填模型。
 - **`/api/mcp-servers/{id}/test`**：管理界面"测试连接"按钮的后端实现——建立会话、list_tools、返回工具清单、关闭会话，全程超时保护（默认 15s）。

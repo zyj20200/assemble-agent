@@ -15,6 +15,7 @@ import { config } from './config.ts';
 import { openDb, type AppDb } from './db/index.ts';
 import { buildRegistryFromDb, loadAgentsFromDb } from './db/loaders.ts';
 import { KnowledgeBaseService } from './core/kb-service.ts';
+import { McpManager } from './core/mcp.ts';
 import { ModelRegistry } from './core/models.ts';
 import type { AgentDefinition } from './core/agent/assemble.ts';
 
@@ -26,22 +27,26 @@ export interface CreateAppOptions {
   /** 测试注入：内存 DB */
   db?: AppDb;
   kbService?: KnowledgeBaseService;
+  mcp?: McpManager;
 }
 
 export function createApp(options: CreateAppOptions = {}): Hono {
   const { db } = options.db ? { db: options.db } : openDb();
   const registry = options.registry ?? new ModelRegistry();
   const kb = options.kbService ?? new KnowledgeBaseService({ db });
+  const mcp = options.mcp ?? new McpManager();
 
   let agents: AgentDefinition[];
+  let loadAgents: () => AgentDefinition[];
   if (options.agents) {
     agents = options.agents;
+    loadAgents = () => options.agents!;
   } else {
-    // DB 驱动装配：Provider/模型注册 + Agent 组装
+    // DB 驱动装配：Provider/模型注册在启动时；Agent 每请求从 DB 即时装载
     buildRegistryFromDb(db, registry);
-    agents = loadAgentsFromDb(db, kb);
+    loadAgents = () => loadAgentsFromDb(db, kb);
+    agents = loadAgents();
   }
-  const byName = new Map(agents.map((a) => [a.name, a]));
 
   const app = new Hono();
   app.onError(handleApiError);
@@ -60,13 +65,15 @@ export function createApp(options: CreateAppOptions = {}): Hono {
     });
   }
 
-  app.route('/', createManagementApp({ db, kb }));
+  app.route('/', createManagementApp({ db, kb, mcp }));
   app.route(
     '/',
     createOpenAiCompatApp({
       registry,
-      getAgent: (name) => byName.get(name),
-      listAgents: () => agents.map((a) => a.name),
+      mcp,
+      // 每请求从 DB 装载（SQLite 毫秒级；后续可加 TTL 缓存优化）
+      getAgent: (name) => loadAgents().find((a) => a.name === name),
+      listAgents: () => loadAgents().map((a) => a.name),
     }),
   );
 
@@ -80,11 +87,19 @@ export function createApp(options: CreateAppOptions = {}): Hono {
 
 // 直接运行（node src/index.ts）时启动服务
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
-  const app = createApp();
-  serve({ fetch: app.fetch, port: config.port }, (info) => {
+  const mcp = new McpManager();
+  const app = createApp({ mcp });
+  const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
     console.log(`assemble-agent 已启动: http://localhost:${info.port}`);
     console.log(`  POST /v1/chat/completions（OpenAI 兼容，model=Agent 名）`);
     console.log(`  GET  /v1/models | /api/health | /api/agents`);
     console.log(`  管理 CRUD：/api/providers /api/models /api/skills /api/mcp-servers /api/knowledge-bases`);
   });
+  const shutdown = async () => {
+    await mcp.closeAll(); // 关闭 MCP 子进程/连接
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 2000);
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 }

@@ -9,6 +9,17 @@ import { schema } from './index.ts';
 import type { ModelRegistry } from '../core/models.ts';
 import type { AgentDefinition } from '../core/agent/assemble.ts';
 import type { KnowledgeBaseService } from '../core/kb-service.ts';
+import type { McpServerConfig } from '../core/mcp.ts';
+
+/** JSON 列安全解析 */
+function safeJson<T>(s: string | null): T | undefined {
+  if (!s) return undefined;
+  try {
+    return JSON.parse(s) as T;
+  } catch {
+    return undefined;
+  }
+}
 
 /** 从 DB 注册所有启用 Provider 及其模型 */
 export function buildRegistryFromDb(db: AppDb, registry: ModelRegistry): void {
@@ -44,6 +55,24 @@ export function loadAgentsFromDb(db: AppDb, kb: KnowledgeBaseService): AgentDefi
       .from(schema.agentKnowledgeBases)
       .where(eq(schema.agentKnowledgeBases.agentId, a.id))
       .all();
+    const mcpLinks = db
+      .select({ mcpServerId: schema.agentMcpServers.mcpServerId })
+      .from(schema.agentMcpServers)
+      .where(eq(schema.agentMcpServers.agentId, a.id))
+      .all();
+    const mcpServers: McpServerConfig[] = mcpLinks
+      .map((link) => db.select().from(schema.mcpServers).where(eq(schema.mcpServers.id, link.mcpServerId)).get())
+      .filter((m): m is NonNullable<typeof m> => !!m && m.enabled)
+      .map((m) => ({
+        id: m.id,
+        name: m.name,
+        transport: m.transport,
+        command: m.command,
+        args: safeJson(m.args),
+        env: safeJson(m.env),
+        url: m.url,
+        headers: safeJson(m.headers),
+      }));
 
     const knowledgeBaseRefs = kbLinks
       .map((link) => {
@@ -68,6 +97,7 @@ export function loadAgentsFromDb(db: AppDb, kb: KnowledgeBaseService): AgentDefi
       modelId: model.modelId,
       temperature: a.temperature ?? undefined,
       maxTokens: a.maxTokens ?? undefined,
+      mcpServers,
       knowledgeBase: knowledgeBaseRefs[0], // MVP：单知识库；多知识库后续支持
     });
   }

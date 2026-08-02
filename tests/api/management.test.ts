@@ -1,9 +1,11 @@
-import { describe, it, before } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from '../../src/index.ts';
 import { openDb } from '../../src/db/index.ts';
 import { KnowledgeBaseService } from '../../src/core/kb-service.ts';
+import { McpManager } from '../../src/core/mcp.ts';
 import type { EmbedFn } from '../../src/core/rag/types.ts';
+import { fileURLToPath } from 'node:url';
 
 /** 确定性伪嵌入：相同文本 → 相同向量 */
 function makeExactEmbed(): { embed: EmbedFn } {
@@ -24,11 +26,17 @@ function makeExactEmbed(): { embed: EmbedFn } {
 
 let app: ReturnType<typeof createApp>;
 let kb: KnowledgeBaseService;
+let mcpManager: McpManager;
 
 before(() => {
   const { db } = openDb(':memory:');
   kb = new KnowledgeBaseService({ db, resolveEmbedder: () => makeExactEmbed().embed });
-  app = createApp({ db, kbService: kb });
+  mcpManager = new McpManager();
+  app = createApp({ db, kbService: kb, mcp: mcpManager });
+});
+
+after(async () => {
+  await mcpManager?.closeAll();
 });
 
 const api = async (method: string, url: string, body?: unknown) => {
@@ -145,13 +153,26 @@ describe('管理 API: MCP Servers', () => {
     const http = await (await api('POST', '/api/mcp-servers', {
       name: 'order',
       transport: 'http',
-      url: 'https://example.com/mcp',
+      url: 'http://127.0.0.1:1/mcp',
       headers: { Authorization: 'Bearer x' },
     })).json();
     assert.equal(http.transport, 'http');
 
-    const t = await (await api('POST', `/api/mcp-servers/${s.id}/test`)).json();
-    assert.ok(t.ok);
+    const bad = await api('POST', `/api/mcp-servers/${http.id}/test`);
+    assert.equal(bad.res.status, 400, '不可达 server 应报连接失败');
+
+    // 真实 stdio stub server
+    const stubPath = fileURLToPath(new URL('../fixtures/mcp-stub-server.ts', import.meta.url));
+    const stub = await (await api('POST', '/api/mcp-servers', {
+      name: 'stub',
+      transport: 'stdio',
+      command: process.execPath,
+      args: [stubPath],
+    })).json();
+    const t = await (await api('POST', `/api/mcp-servers/${stub.id}/test`)).json();
+    assert.equal(t.ok, true);
+    assert.deepEqual(t.tools, ['echo', 'add']);
+
   });
 });
 
