@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 虚拟环境
+.venv/
+
+# 运行时数据
+data/
+*.db
+*.sqlite3
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+# Node / TypeScript
+node_modules/
+dist/
+*.tsbuildinfo
+
+# 测试产物
+tests/**/tmp/
+
+# 设计参考资料（含第三方源码 + 嵌套 .git + 许可未确认，不入库）
+reference/
