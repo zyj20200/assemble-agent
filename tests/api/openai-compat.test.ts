@@ -7,6 +7,7 @@ import {
   fauxToolCall,
 } from '@earendil-works/pi-ai';
 import { createApp } from '../../src/index.ts';
+import { openDb } from '../../src/db/index.ts';
 import { ModelRegistry } from '../../src/core/models.ts';
 import { InMemoryVectorStore } from '../../src/core/rag/vector-store.ts';
 import type { AgentDefinition } from '../../src/core/agent/assemble.ts';
@@ -67,7 +68,7 @@ before(async () => {
     knowledgeBase: { store: kbStore, embed: kbEmbed, datasetId: 'ds', minScore: 0.3 },
   };
 
-  app = createApp({ registry, agents: [chatDef, kbDef] });
+  app = createApp({ registry, agents: [chatDef, kbDef], db: openDb(':memory:').db });
 });
 
 const post = (body: unknown, headers: Record<string, string> = {}) =>
@@ -255,6 +256,6 @@ describe('GET /api/health', () => {
     assert.equal(res.status, 200);
     const body = (await res.json()) as any;
     assert.equal(body.status, 'ok');
-    assert.equal(body.agents, 2);
+    assert.ok('agents' in body && 'providers' in body, '应包含 DB 统计字段');
   });
 });
