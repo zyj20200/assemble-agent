@@ -131,7 +131,7 @@ Agent「客服小助手」
 | 项 | 选择 | 理由 |
 | --- | --- | --- |
 | 语言/运行时 | TypeScript + Node.js 22+（NodeNext，`.ts` 扩展名导入） | 与 pi 生态同栈；v8 JIT 对计算/JSON 更优；Node 原生支持 TS 类型剥离 |
-| Web 框架 | Fastify 或 Hono（未定，二选一） | 轻量、SSE 支持好 |
+| Web 框架 | **Hono**（已定，见 §10.1 ADR） | 轻量、SSE 流式一等公民（streamSSE）、TS 类型好 |
 | Agent 运行时 | **@earendil-works/pi-agent-core** | 对话/工具循环、事件流、steering、会话/压缩开箱即用，不自研循环 |
 | 模型层 | **@earendil-works/pi-ai** | 30+ Provider 统一 API、流式、用量/成本统计、OAuth/CredentialStore |
 | ORM/DB | Drizzle + SQLite（MVP）；PostgreSQL 16 + pgvector（演进） | SQLite 零部署单文件；pgvector 承接向量检索 |
@@ -338,7 +338,7 @@ Document 1 ──── * Chunk  (Chunk.embedding 向量, Chunk.kb_id 冗余索�
 
 ## 6. 关键机制设计
 
-### 6.1 Agent 运行时（基于 pi-agent-core，不自研循环）
+### 6.1 Agent 运行时（基于 pi-agent-core，不自研循环）✅ 已落地
 
 ```
 收到 /v1/chat/completions
@@ -372,7 +372,7 @@ Document 1 ──── * Chunk  (Chunk.embedding 向量, Chunk.kb_id 冗余索�
 - **会话与清理**：每个请求独立 `new Agent()`（无状态 pod 语义），MCP 会话请求结束关闭；`finally` 中确保关闭 stdio 子进程。
 - **无状态用法**：MVP 无服务端记忆，每请求独立；请求内 `messages` 直接作为 `initialState.messages`。
 
-### 6.2 模型接入（pi-ai 层）
+### 6.2 模型接入（pi-ai 层）✅ 已落地（`src/core/models.ts`：自定义 OpenAI 兼容 provider 注册、模型级默认 temperature）
 
 - 统一 `createModels()`，按 Provider 注册 pi-ai provider（OpenAI 兼容端点用 `compat` 字段适配各家差异）。
 - 请求参数优先级：请求体 > Agent 配置 > Model 配置 > Provider 上游默认。
@@ -481,17 +481,18 @@ assemble-agent/
 ├── DESIGN.md
 ├── README.md
 ├── src/
-│   ├── index.ts               # 服务入口：路由挂载、静态页面、启动建表
-│   ├── config.ts              # 环境变量配置（DB 路径、API key、超时等）
+│   ├── index.ts               # ✅ 服务入口：Hono 组装 + 启动（node src/index.ts）
+│   ├── config.ts              # ✅ 环境变量配置（PORT/API key/LLM/嵌入）
 │   ├── db/                    # Drizzle schema + 连接（SQLite MVP / PG 演进）
 │   ├── api/
-│   │   ├── openai-compat.ts   # /v1/chat/completions, /v1/models, /v1/agents（事件→SSE 映射）
+│   │   ├── openai-compat.ts   # ✅ /v1/chat/completions, /v1/models（事件→SSE 映射，含客户端工具）
 │   │   ├── management.ts      # /api/* CRUD
 │   │   └── errors.ts          # OpenAI 风格错误处理
 │   ├── core/
 │   │   ├── models.ts          # pi-ai 包装：createModels + provider 注册 + 请求 key 解析
 │   │   ├── agent/
 │   │   │   ├── kb-tool.ts     # ✅ 已落地：知识库检索 AgentTool
+│   │   ├── assemble.ts      # ✅ Agent 装配（AgentDefinition + ModelRegistry → Agent）
 │   │   │   └── index.ts
 │   │   ├── mcp.ts             # MCP 会话管理、工具发现/调用、test 探测
 │   │   ├── rag/               # ✅ 已落地（从 knowledge-control 移植并修复）
@@ -524,7 +525,7 @@ assemble-agent/
 | --- | --- | --- |
 | **M1 设计** | 设计文档 + 工程图纸风交互原型 | ✅ 完成（含 v0.2 技术栈切换） |
 | **M2 骨架** | TS 工程脚手架、DB/ORM/schema、管理 CRUD 全通 | 🔄 脚手架/测试基建完成，CRUD 待写 |
-| **M3 对话链路** | pi-ai 模型层 + pi-agent-core 运行时 + `/v1/chat/completions`（非流式+流式） | ⬜ 未开始（纯对话 Agent 跑通为验收） |
+| **M3 对话链路** | pi-ai 模型层 + pi-agent-core 运行时 + `/v1/chat/completions`（非流式+流式） | ✅ **完成**（10 项 API 集成测试：SSE 序列/客户端工具/错误映射；真实网关验证 503 路径） |
 | **M4 组件接入** | MCP（stdio+http）+ Skills 注入 + 知识库上传/检索 | 🔄 **知识库 RAG 已落地**（含 pgvector 真库测试）；MCP/Skills 待接 |
 | **M5 管理页面** | 正式 index.html 对接全部管理 API + 对话测试 | ⬜ 未开始 |
 | **M6 硬化** | 错误码、超时、日志、安全项（§8）、种子数据 | ⬜ 未开始 |
@@ -536,6 +537,7 @@ assemble-agent/
 | TypeScript + pi 生态 | 与 pi-agent-core/pi-ai 同栈；运行时/模型层开箱即用 | Python + FastAPI（v0.1） | 高（逻辑层已抽象） |
 | pi-agent-core 运行时 | 对话/工具循环、事件流、steering、会话压缩免自研 | 自研循环 / LangGraph | 高（事件接口解耦） |
 | pi-ai 模型层 | 30+ Provider、用量/成本、OAuth 免自研 | openai SDK 直连 | 高 |
+| Hono Web 框架 | streamSSE 原生、零依赖、TS 类型好 | Fastify | 高（路由薄层） |
 | SQLite 起步 | 零运维，单文件备份 | PostgreSQL | 高（Drizzle 已抽象） |
 | RAG 移植 knowledge-control | 分块/解析/QA 多路召回是难点，移植并修复 6 个问题 | 完全自研 | 高（VectorStore 抽象） |
 | pgvector 向量检索 | 生产可用、HNSW、单库 | InMemory/SQLite-numpy | 高（VectorStore 抽象） |
