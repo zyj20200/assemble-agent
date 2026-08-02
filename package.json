@@ -10,7 +10,8 @@
     "test:watch": "node --test --watch \"tests/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node src/index.ts",
-    "seed": "node scripts/seed.ts"
+    "seed": "node scripts/seed.ts",
+    "templates": "node scripts/templates.ts"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.83.0",
