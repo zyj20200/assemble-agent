@@ -32,6 +32,10 @@
   .topnav a.active{background:var(--accent);color:#fff}
   .topbar .crumb{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-soft);letter-spacing:.04em}
   .status-pill{font-family:var(--mono);font-size:11px;padding:4px 12px;border-radius:999px;background:var(--bg);color:var(--ink-soft);border:1px solid var(--line)}
+  .skin-switch{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff;flex-shrink:0}
+  .skin-btn{font-size:11px;font-family:var(--mono);padding:5px 12px;border:0;background:transparent;color:var(--ink-soft);cursor:pointer;transition:all .15s}
+  .skin-btn:hover:not(.active){color:var(--accent)}
+  .skin-btn.active{background:var(--accent);color:#fff}
   .status-pill.ok{background:#ECFDF5;border-color:#A7F3D0;color:#047857}
   .status-pill.err{background:#FEF2F2;border-color:#FECACA;color:#B91C1C}
 
@@ -138,6 +142,36 @@
   .agent-card .lines b{letter-spacing:.05em}
   .agent-card .card-actions{display:flex;gap:8px}
   .run-log{font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-top:8px;max-height:120px;overflow:auto}
+
+  /* ══ C 档：侧边栏仪表盘布局（body.c-skin，与 B 档同一 DOM，纯 CSS 重排） ══ */
+  body.c-skin .wrap{max-width:none;margin-left:230px;padding:24px 28px 90px}
+  body.c-skin .topbar{
+    position:fixed;inset:0 auto 0 0;width:230px;height:100vh;border-radius:0;border:0;
+    border-right:1px solid var(--line);box-shadow:none;
+    flex-direction:column;align-items:stretch;gap:2px;padding:22px 14px;margin:0;flex-wrap:nowrap;
+  }
+  body.c-skin .topbar .logo{padding:2px 10px 20px;font-size:16px}
+  body.c-skin .topnav{flex-direction:column;gap:2px;flex:1;overflow-y:auto}
+  body.c-skin .topnav a{border-radius:8px;padding:9px 12px;font-size:13px}
+  body.c-skin .topnav a.active{background:var(--accent);color:#fff}
+  body.c-skin .topbar .crumb{display:none}
+  body.c-skin .status-pill{margin-top:auto;margin-bottom:6px;align-self:stretch;text-align:center;padding:6px 8px}
+  body.c-skin .skin-switch{margin-top:8px}
+  body.c-skin .skin-btn{flex:1;text-align:center;padding:6px 4px;font-size:10px}
+  /* 主内容卡片化（视图内容包一层白卡） */
+  body.c-skin .view{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow);margin-bottom:20px}
+  body.c-skin .assemble-grid{grid-template-columns:300px 1fr 360px}
+  body.c-skin h3{color:var(--ink);font-weight:700}
+  /* 小屏回退顶栏布局 */
+  @media(max-width:1100px){
+    body.c-skin .topbar{position:static;width:auto;height:auto;flex-direction:row;align-items:center;gap:12px;padding:10px 16px;border:1px solid var(--line);border-radius:var(--radius);margin-bottom:16px}
+    body.c-skin .topnav{flex-direction:row;overflow:visible}
+    body.c-skin .topbar .crumb{display:block;margin-left:auto}
+    body.c-skin .status-pill{margin:0;align-self:auto}
+    body.c-skin .wrap{margin-left:0;max-width:1460px;margin:0 auto;padding:24px}
+    body.c-skin .assemble-grid{grid-template-columns:320px 1fr 380px}
+    @media(max-width:1200px){body.c-skin .assemble-grid{grid-template-columns:1fr}}
+  }
 </style>
 </head>
 <body>
@@ -151,6 +185,10 @@
     </nav>
     <div class="crumb">POST /v1/chat/completions · model = Agent 名</div>
     <span class="status-pill" id="statusPill">加载中…</span>
+    <div class="skin-switch" title="切换界面布局">
+      <button class="skin-btn active" data-skin="b">B · 顶栏</button>
+      <button class="skin-btn" data-skin="c">C · 侧边栏</button>
+    </div>
   </header>
 
   <!-- ============ 装配台 ============ -->
@@ -273,6 +311,19 @@ window.addEventListener('error', e => window.__errs.push(e.message + ' @' + (e.l
    assemble-agent 管理页 —— 对接真实 /api/* 与 /v1/*
    ============================================================ */
 const $ = (sel) => document.querySelector(sel);
+
+/* ---------- 皮肤切换（B 顶栏 / C 侧边栏） ---------- */
+function applySkin(skin) {
+  document.body.classList.toggle('c-skin', skin === 'c');
+  try { localStorage.setItem('assemble-skin', skin); } catch { /* 无痕模式忽略 */ }
+  document.querySelectorAll('.skin-btn').forEach((b) => b.classList.toggle('active', b.dataset.skin === skin));
+}
+document.querySelectorAll('.skin-btn').forEach((b) => {
+  b.onclick = () => applySkin(b.dataset.skin);
+});
+let savedSkin = 'b';
+try { savedSkin = localStorage.getItem('assemble-skin') === 'c' ? 'c' : 'b'; } catch { /* ignore */ }
+applySkin(savedSkin);
 const W = { model:'#2563EB', prompt:'#E11D48', mcp:'#059669', skill:'#D97706', kb:'#7C3AED' };
 const stateKeyOf = (k) => k === 'mcp' ? 'mcps' : k === 'kb' ? 'kbs' : k; // prompts → state.prompts
 

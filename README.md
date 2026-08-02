@@ -17,6 +17,12 @@
 | :---: | :---: |
 | ![装配台](docs/screenshots/01-assembly.png) | ![试运行](docs/screenshots/04-test-run.png) |
 
+> 🎨 双布局可切换：顶栏（B 档，默认）与侧边栏仪表盘（C 档），右上角一键切换、刷新记忆。
+
+| C 档 · 侧边栏仪表盘 | C 档 · 资源库 |
+| :---: | :---: |
+| ![C 档装配台](docs/screenshots/05-skin-c-assembly.png) | ![C 档资源库](docs/screenshots/06-skin-c-library.png) |
+
 | 资源库 · 五类组件 CRUD | Agents · 已发布智能体 |
 | :---: | :---: |
 | ![资源库](docs/screenshots/02-library.png) | ![Agents](docs/screenshots/03-agents.png) |
