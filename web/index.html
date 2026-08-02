@@ -681,8 +681,8 @@ function renderLibrary() {
     const cells = cfg.row(x).map(c => `<td>${esc(c)}</td>`).join('');
     const extra = extraActions(libTab, x);
     return `<tr><td style="width:26px;color:var(--ink-soft);font-family:var(--mono);font-size:10px">${i+1}</td>${cells}<td class="actions">
-      <button class="btn small" onclick="openLibModal(LIB['${libTab}'],${JSON.stringify(x)})">编辑</button>
-      <button class="btn small danger" onclick="removeLib('${libTab}',${x.id},'${esc(x.name)}')">删除</button>${extra}</td></tr>`;
+      <button class="btn small" onclick="openLibModalById('${libTab}',${x.id})">编辑</button>
+      <button class="btn small danger" onclick="removeLib('${libTab}',${x.id})">删除</button>${extra}</td></tr>`;
   }).join('');
   $('#libTable').innerHTML = `<table><tr><th>#</th>${cfg.headers.map(h => `<th>${h}</th>`).join('')}<th>操作</th></tr>${rows}</table>`;
   renderLibExtra();
@@ -745,14 +745,20 @@ async function testMcp(id) {
   } catch (e) { toast('连接失败：' + e.message); }
 }
 
-async function removeLib(kind, id, name) {
-  if (!confirm(`删除「${name}」？`)) return;
+async function removeLib(kind, id) {
+  const item = state[stateKeyOf(kind)].find(x => x.id === id);
+  if (!confirm(`删除「${item?.name ?? id}」？`)) return;
   try {
     await LIB[kind].remove(id);
     toast('已删除', true);
     await refreshAll();
     renderLibrary();
   } catch (e) { toast('删除失败：' + e.message); }
+}
+function openLibModalById(kind, id) {
+  const cfg = LIB[kind];
+  const existing = state[stateKeyOf(kind)].find((x) => x.id === id);
+  openLibModal(cfg, existing);
 }
 function openLibModal(cfg, existing) {
   const fields = cfg.form.map(f => {
