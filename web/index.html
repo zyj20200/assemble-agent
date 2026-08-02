@@ -56,7 +56,7 @@
   .bus input[type=text],.bus textarea,.bus input[type=number],.bus select{
     width:100%;border:1px solid var(--line);background:#fff;padding:8px 10px;font-size:13px;font-family:var(--sans);color:var(--ink)
   }
-  .bus textarea{min-height:120px;resize:vertical;font-family:var(--mono);font-size:12px}
+  .bus textarea{min-height:200px;resize:vertical;font-family:var(--mono);font-size:12px;line-height:1.6}
   .bus input:focus,.bus textarea:focus{outline:1.5px solid var(--accent)}
   .params-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
   .slot{display:flex;align-items:center;gap:10px;border:1.5px dashed var(--line);padding:8px 10px;margin-bottom:8px;background:#fff}
@@ -108,12 +108,13 @@
 
   /* ── 模态框 ── */
   .modal-mask{position:fixed;inset:0;background:rgba(26,43,48,.45);display:flex;align-items:flex-start;justify-content:center;padding:60px 20px;z-index:50;overflow:auto}
-  .modal{background:var(--panel);border:1.5px solid var(--ink);width:560px;max-width:100%;padding:20px;box-shadow:6px 6px 0 rgba(0,0,0,.18)}
+  .modal{background:var(--panel);border:1.5px solid var(--ink);width:760px;max-width:100%;padding:20px;box-shadow:6px 6px 0 rgba(0,0,0,.18);max-height:88vh;overflow-y:auto}
   .modal h3{margin-bottom:14px}
   .modal .field{margin-bottom:12px}
   .modal label{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ink-soft);margin-bottom:4px}
   .modal input[type=text],.modal input[type=number],.modal textarea,.modal select{width:100%;border:1px solid var(--line);background:#fff;padding:7px 9px;font-size:13px}
-  .modal textarea{min-height:70px;resize:vertical;font-family:var(--mono);font-size:12px}
+  .modal textarea{min-height:90px;resize:vertical;font-family:var(--mono);font-size:12px;line-height:1.6}
+  .modal textarea.longtext{min-height:380px;width:100%;max-height:60vh}
   .modal .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .modal .actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
 
@@ -599,7 +600,7 @@ const LIB = {
     form: [
       { k:'name', label:'名称', required:true },
       { k:'description', label:'用途说明' },
-      { k:'content', label:'提示词模板（支持 {{skills}} 占位符）', type:'textarea', required:true },
+      { k:'content', label:'提示词模板（支持 {{skills}} 占位符）', type:'textarea', longtext:true, required:true },
       { k:'enabled', label:'启用', type:'select', opts:[[true,'是'],[false,'否']] },
     ],
     create: b => api('/api/prompts', { method:'POST', body: JSON.stringify(b) }),
@@ -615,7 +616,7 @@ const LIB = {
     form: [
       { k:'name', label:'名称', required:true },
       { k:'description', label:'用途说明' },
-      { k:'content', label:'Markdown 指令内容', type:'textarea', required:true },
+      { k:'content', label:'Markdown 指令内容', type:'textarea', longtext:true, required:true },
       { k:'enabled', label:'启用', type:'select', opts:[[true,'是'],[false,'否']] },
     ],
     create: b => api('/api/skills', { method:'POST', body: JSON.stringify(b) }),
@@ -772,7 +773,10 @@ function openLibModal(cfg, existing) {
     let val = existing ? existing[f.k] : '';
     const opts = typeof f.opts === 'function' ? f.opts() : (f.opts ?? []);
     let input;
-    if (f.type === 'textarea') input = `<textarea id="f_${f.k}" placeholder="${f.label}">${esc(val)}</textarea>`;
+    if (f.type === 'textarea') {
+      const long = f.longtext ? ' class="longtext"' : '';
+      input = `<textarea id="f_${f.k}"${long} placeholder="${f.label}">${esc(val)}</textarea>`;
+    }
     else if (f.type === 'select') input = `<select id="f_${f.k}">${opts.map(o => `<option value="${esc(o[0])}" ${String(o[0])===String(val)?'selected':''}>${esc(o[1])}</option>`).join('')}</select>`;
     else if (f.type === 'number') input = `<input type="number" id="f_${f.k}" step="${f.step??1}" value="${esc(val)}">`;
     else input = `<input type="text" id="f_${f.k}" value="${esc(val)}">`;
