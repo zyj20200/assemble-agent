@@ -445,7 +445,7 @@ Document 1 ──── * Chunk  (Chunk.embedding 向量, Chunk.kb_id 冗余索�
 
 ---
 
-## 7. Web 管理页面设计（✅ 已实现，`web/index.html` 单文件自包含，hash 路由可深链）
+## 7. Web 管理页面设计（✅ 已实现，`web/index.html` 单文件自包含，hash 路由可深链；管理面增强项已补齐：过程事件透出 `x_emit_process`、流式 usage `include_usage`、装配 JSON 快照、max_tool_rounds 表单）
 
 单页应用（`/`），**工程图纸/装配台风格**（样式参考 `reference/动态智能体`）：图纸白底 + 32px 网格线、墨青描边方角、五类组件专属线色（模型蓝 `#245A8D` / 提示词红 `#A03A3A` / MCP 绿 `#0F7A5A` / 技能棕 `#8A5A24` / 知识库紫 `#6B4B8A`）、等宽 mono 标签。顶栏导航（装配台 / 资源库 / Agents）+ 状态胶囊（未发布/已发布），三个视图：
 

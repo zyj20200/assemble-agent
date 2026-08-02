@@ -50,6 +50,9 @@ interface ChatRequest {
   tools?: Array<{ type: string; function: { name: string; description?: string; parameters?: unknown } }>;
   tool_choice?: unknown;
   n?: number;
+  /** 管理页试运行专用：SSE 中透出服务端工具轨迹（process delta） */
+  x_emit_process?: boolean;
+  stream_options?: { include_usage?: boolean };
 }
 
 export interface OpenAiCompatDeps {
@@ -263,7 +266,15 @@ export function createOpenAiCompatApp(deps: OpenAiCompatDeps): Hono {
     if (!body.stream) {
       return await runNonStream({ c, agent, messages: agentMessages, model: body.model, clientNames });
     }
-    return await runStream({ c, agent, messages: agentMessages, model: body.model, clientNames });
+    return await runStream({
+      c,
+      agent,
+      messages: agentMessages,
+      model: body.model,
+      clientNames,
+      emitProcess: body.x_emit_process === true,
+      includeUsage: body.stream_options?.include_usage === true,
+    });
   });
 
   return app;
@@ -359,8 +370,12 @@ async function runStream(args: {
   messages: AgentMessage[];
   model: string;
   clientNames: Set<string>;
+  /** 管理页试运行：透出服务端工具轨迹 */
+  emitProcess?: boolean;
+  /** 流式返回 usage（OpenAI stream_options.include_usage） */
+  includeUsage?: boolean;
 }) {
-  const { c, agent, messages, model, clientNames } = args;
+  const { c, agent, messages, model, clientNames, emitProcess = false, includeUsage = false } = args;
 
   return streamSSE(c, async (stream) => {
     const state: StreamState = {
@@ -374,6 +389,30 @@ async function runStream(args: {
     try {
       agent.subscribe(async (event) => {
         switch (event.type) {
+          case 'agent_start': {
+            if (emitProcess) {
+              await write(sseChunk(state, model, { process: { type: 'agent_started' } }, null));
+            }
+            return;
+          }
+          case 'tool_execution_start': {
+            if (emitProcess) {
+              const isKb = event.toolName === 'search_knowledge';
+              await write(sseChunk(state, model, {
+                process: { type: isKb ? 'knowledge_searched' : 'tool_call_started', tool: event.toolName },
+              }, null));
+            }
+            return;
+          }
+          case 'tool_execution_end': {
+            if (emitProcess) {
+              const isKb = event.toolName === 'search_knowledge';
+              await write(sseChunk(state, model, {
+                process: { type: isKb ? 'knowledge_searched' : 'tool_call_finished', tool: event.toolName },
+              }, null));
+            }
+            return;
+          }
           case 'message_update': {
             if (event.message.role !== 'assistant') return;
             const ev = event.assistantMessageEvent;
@@ -432,6 +471,20 @@ async function runStream(args: {
             const clientCalls = last ? toolCallsOf(last).filter((tc) => isClientTool(clientNames)(tc.name)) : [];
             const finish = clientCalls.length > 0 ? 'tool_calls' : last?.stopReason === 'length' ? 'length' : 'stop';
             await write(sseChunk(state, model, {}, finish));
+            if (includeUsage) {
+              // 跨轮累加 usage（OpenAI 约定：stream_options.include_usage 时末尾发 usage chunk）
+              const usage = event.messages
+                .filter((m) => m.role === 'assistant' && (m as AssistantMessage).usage)
+                .reduce((acc, m) => {
+                  const u = (m as AssistantMessage).usage;
+                  return {
+                    prompt_tokens: acc.prompt_tokens + u.input,
+                    completion_tokens: acc.completion_tokens + u.output,
+                    total_tokens: acc.total_tokens + (u.totalTokens ?? u.input + u.output),
+                  };
+                }, { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 });
+              await write(JSON.stringify({ id: state.id, object: 'chat.completion.chunk', created: state.created, model, choices: [], usage }));
+            }
             await write('[DONE]');
             return;
           }

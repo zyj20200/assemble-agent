@@ -211,6 +211,60 @@ describe('POST /v1/chat/completions（OpenAI 兼容）', () => {
   });
 });
 
+
+describe('过程事件透出 + 流式 usage（管理页试运行）', () => {
+  it('x_emit_process：SSE 含 process 轨迹（工具调用）', async () => {
+    faux.setResponses([
+      fauxAssistantMessage([fauxToolCall('search_knowledge', { query: '怎么退货？' })], { stopReason: 'toolUse' }),
+      fauxAssistantMessage([fauxText('基于知识库回答。')]),
+    ]);
+    const res = await post({
+      model: '客服小助手',
+      messages: [{ role: 'user', content: '怎么退货？' }],
+      stream: true,
+      x_emit_process: true,
+    });
+    const chunks = await parseSse(res);
+    const processEvents = chunks
+      .map((c) => (c as any).choices?.[0]?.delta?.process)
+      .filter(Boolean);
+    const types = processEvents.map((p: { type: string }) => p.type);
+    assert.ok(types.includes('agent_started'), `应含 agent_started: ${types}`);
+    assert.ok(types.includes('knowledge_searched'), `应含 knowledge_searched: ${types}`);
+  });
+
+  it('x_emit_process 默认关闭：无 process 轨迹', async () => {
+    faux.setResponses([fauxAssistantMessage([fauxText('好')])]);
+    const res = await post({
+      model: '测试助手',
+      messages: [{ role: 'user', content: 'x' }],
+      stream: true,
+    });
+    const chunks = await parseSse(res);
+    const hasProcess = chunks.some((c) => (c as any).choices?.[0]?.delta?.process);
+    assert.equal(hasProcess, false);
+  });
+
+  it('stream_options.include_usage：末尾 usage chunk（跨轮累加）', async () => {
+    faux.setResponses([
+      fauxAssistantMessage([fauxToolCall('search_knowledge', { query: 'q' })], { stopReason: 'toolUse' }),
+      fauxAssistantMessage([fauxText('答案')]),
+    ]);
+    const res = await post({
+      model: '客服小助手',
+      messages: [{ role: 'user', content: 'x' }],
+      stream: true,
+      stream_options: { include_usage: true },
+    });
+    const chunks = await parseSse(res);
+    const usageChunk = chunks.find((c) => (c as any).usage);
+    assert.ok(usageChunk, '应含 usage chunk');
+    const u = (usageChunk as any).usage;
+    assert.equal(typeof u.prompt_tokens, 'number');
+    assert.equal(u.total_tokens, u.prompt_tokens + u.completion_tokens);
+  });
+});
+
 describe('上游失败（faux 空队列 → stopReason=error）', () => {
   it('非流式 → 503 upstream_unavailable', async () => {
     faux.setResponses([]); // 空队列：faux 返回错误消息

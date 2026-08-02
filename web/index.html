@@ -182,6 +182,7 @@
           <div class="field"><label>RAG MODE</label>
             <select id="ragMode"><option value="auto">auto（工具式）</option><option value="always">always（注入式）</option></select>
           </div>
+          <div class="field"><label>MAX TOOL ROUNDS</label><input type="number" id="maxToolRounds" min="1" max="50" placeholder="默认 8"></div>
         </div>
         <div class="field" style="margin-top:10px">
           <label>接线槽</label>
@@ -190,6 +191,10 @@
           <div class="slot"><span class="tag" style="color:var(--w-mcp)">MCP</span><div class="chip" id="slot-mcp"></div></div>
           <div class="slot"><span class="tag" style="color:var(--w-skill)">SKILL</span><div class="chip" id="slot-skill"></div></div>
           <div class="slot"><span class="tag" style="color:var(--w-kb)">KNOWLEDGE</span><div class="chip" id="slot-kb"></div></div>
+        </div>
+        <div class="field" style="margin-top:4px">
+          <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="emitProcess" checked>
+          过程事件透出（试运行显示服务端工具轨迹）</label>
         </div>
         <button class="btn primary" id="publishBtn" style="width:100%">发布智能体</button>
         <div class="run-log" id="publishLog"></div>
@@ -201,9 +206,14 @@
         <div class="tabs">
           <button data-t="curl" class="active">接入示例</button>
           <button data-t="run">试运行</button>
+          <button data-t="snap">装配快照</button>
         </div>
         <div id="tab-curl">
           <pre class="code" id="curlSnippet">// 发布后此处生成 curl 示例</pre>
+        </div>
+        <div id="tab-snap" class="hidden">
+          <pre class="code" id="snapJson" style="min-height:180px"></pre>
+          <button class="btn small" id="snapCopy" style="margin-top:8px">复制 JSON</button>
         </div>
         <div id="tab-run" class="hidden">
           <div class="chat-box">
@@ -349,6 +359,29 @@ function toggleSel(key, id, on) {
   if (!on) { const i = arr.indexOf(id); if (i>=0) arr.splice(i,1); }
   renderSlots();
 }
+function renderSnap() {
+  const name = $('#agentName').value.trim() || '客服小助手';
+  const model = state.models.find(m => m.id === sel.model);
+  const snap = {
+    name,
+    system_prompt: $('#systemPrompt').value.trim() || '你是一个乐于助人的助手。',
+    model: model ? { id: model.id, name: model.name, model_id: model.modelId } : null,
+    skills: state.skills.filter(x => sel.skills.includes(x.id)).map(x => ({ id: x.id, name: x.name })),
+    mcp_servers: state.mcps.filter(x => sel.mcps.includes(x.id)).map(x => ({ id: x.id, name: x.name })),
+    knowledge_bases: state.kbs.filter(x => sel.kbs.includes(x.id)).map(x => ({ id: x.id, name: x.name })),
+    rag_mode: $('#ragMode').value,
+  };
+  $('#snapJson').textContent = JSON.stringify(snap, null, 2);
+}
+document.querySelectorAll('.api .tabs button').forEach(btn => btn.onclick = () => {
+  document.querySelectorAll('.api .tabs button').forEach(b => b.classList.toggle('active', b === btn));
+  ['curl','run','snap'].forEach(t => $('#tab-' + t).classList.toggle('hidden', t !== btn.dataset.t));
+  if (btn.dataset.t === 'snap') renderSnap();
+});
+$('#snapCopy').onclick = async () => {
+  try { await navigator.clipboard.writeText($('#snapJson').textContent); toast('已复制', true); }
+  catch { toast('复制失败（需 https 或本地）'); }
+};
 function renderSlots() {
   const chip = (wire, list, kind) => list.length === 0
     ? `<span style="color:var(--ink-soft)">— 未接线</span>`
@@ -361,6 +394,7 @@ function renderSlots() {
   $('#slot-skill').innerHTML  = chip(W.skill,  state.skills.filter(x => sel.skills.includes(x.id)), 'skills');
   $('#slot-kb').innerHTML     = chip(W.kb,     state.kbs.filter(x => sel.kbs.includes(x.id)), 'kbs');
   renderCurl();
+  if (!$('#tab-snap').classList.contains('hidden')) renderSnap();
 }
 function detach(kind, id) {
   if (kind === 'mcps') toggleSel('mcps', id, false);
@@ -441,7 +475,11 @@ async function runChat() {
     const res = await fetch('/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({ model, messages:[{ role:'user', content:text }], stream:true }),
+      body: JSON.stringify({
+        model, messages:[{ role:'user', content:text }], stream:true,
+        stream_options: { include_usage: true },
+        ...($('#emitProcess').checked ? { x_emit_process: true } : {}),
+      }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => null);
@@ -466,7 +504,17 @@ async function runChat() {
         try {
           const chunk = JSON.parse(payload);
           if (chunk.error) { body.textContent = '❌ ' + chunk.error.message; continue; }
+          if (chunk.usage) {
+            body.textContent += '\n\n[usage: ' + chunk.usage.prompt_tokens + ' in / ' + chunk.usage.completion_tokens + ' out]';
+            continue;
+          }
           const delta = chunk.choices?.[0]?.delta;
+          if (delta?.process) {
+            const p = delta.process;
+            const label = p.tool ? p.type + ' · ' + p.tool : p.type;
+            appendMsg('tool', '⚙ ' + label);
+            continue;
+          }
           if (delta?.content) body.textContent += delta.content;
           if (delta?.tool_calls) {
             const name = delta.tool_calls[0]?.function?.name;
@@ -759,7 +807,11 @@ function openTestModal(name) {
     try {
       const res = await fetch('/v1/chat/completions', {
         method: 'POST', headers: { 'Content-Type':'application/json' },
-        body: JSON.stringify({ model: name, messages:[{ role:'user', content:text }], stream:true }),
+        body: JSON.stringify({
+          model: name, messages:[{ role:'user', content:text }], stream:true,
+          stream_options: { include_usage: true },
+          x_emit_process: true,
+        }),
       });
       if (!res.ok) { const e = await res.json().catch(()=>null); ai.querySelector('.body').textContent = '❌ ' + (e?.error?.message || res.status); return; }
       const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
@@ -777,7 +829,16 @@ function openTestModal(name) {
           try {
             const chunk = JSON.parse(p);
             if (chunk.error) { trace.textContent = '❌ ' + chunk.error.message; continue; }
+            if (chunk.usage) {
+              trace.textContent += `📊 usage: ${chunk.usage.prompt_tokens} in / ${chunk.usage.completion_tokens} out\n`;
+              continue;
+            }
             const delta = chunk.choices?.[0]?.delta;
+            if (delta?.process) {
+              const pp = delta.process;
+              trace.textContent += `⚙ ${pp.tool ? pp.type + ' · ' + pp.tool : pp.type}\n`;
+              continue;
+            }
             if (delta?.content) bodyEl.textContent += delta.content;
             if (delta?.tool_calls) {
               const name = delta.tool_calls[0]?.function?.name;
@@ -800,6 +861,7 @@ function editAgent(id, name) {
   $('#temperature').value = a.temperature ?? '';
   $('#maxTokens').value = a.maxTokens ?? '';
   $('#ragMode').value = a.ragMode ?? 'auto';
+  $('#maxToolRounds').value = a.maxToolRounds ?? '';
   sel.model = a.modelId;
   sel.skills = (a.skills ?? []).map(s => s.id);
   sel.mcps = (a.mcp_servers ?? []).map(s => s.id);
