@@ -172,6 +172,22 @@
     body.c-skin .assemble-grid{grid-template-columns:320px 1fr 380px}
     @media(max-width:1200px){body.c-skin .assemble-grid{grid-template-columns:1fr}}
   }
+
+  /* C 档资源库：二级侧边栏（6 tab 竖排 + 右侧内容，形成 2 层侧边栏结构） */
+  body.c-skin .lib-layout{display:grid;grid-template-columns:190px 1fr;gap:22px;align-items:start}
+  body.c-skin .lib-tabs{flex-direction:column;gap:2px;border:1px solid var(--line);border-radius:var(--radius);padding:8px;background:#F9FAFB;margin:0;position:sticky;top:0}
+  body.c-skin .lib-tabs button{border:0;border-radius:8px;text-align:left;padding:9px 14px;font-size:13px;background:transparent;color:var(--ink-soft);display:flex;justify-content:space-between;align-items:center}
+  body.c-skin .lib-tabs button:hover{background:#fff;color:var(--accent)}
+  body.c-skin .lib-tabs button.active{background:var(--accent);color:#fff}
+  body.c-skin .lib-tabs button .cnt{font-size:10px;opacity:.7}
+  body.c-skin .lib-content{min-width:0}
+  /* 小屏回退：二级侧边栏随主导航一起回退为横排 */
+  @media(max-width:1100px){
+    body.c-skin .lib-layout{display:block}
+    body.c-skin .lib-tabs{flex-direction:row;gap:6px;border:0;padding:0;background:transparent;position:static;margin-bottom:14px;overflow-x:auto}
+    body.c-skin .lib-tabs button{border:1px solid var(--line);background:#fff;padding:7px 14px;display:inline-block}
+    body.c-skin .lib-tabs button.active{border-color:var(--accent)}
+  }
 </style>
 </head>
 <body>
@@ -285,13 +301,17 @@
 
   <!-- ============ 资源库 ============ -->
   <section id="view-library" class="view hidden">
-    <div class="lib-tabs" id="libTabs"></div>
-    <div class="lib-head">
-      <span style="font-family:var(--mono);font-size:12px;color:var(--ink-soft)" id="libInfo"></span>
-      <button class="btn small" id="libAddBtn">＋ 新增</button>
+    <div class="lib-layout">
+      <div class="lib-tabs" id="libTabs"></div>
+      <div class="lib-content">
+        <div class="lib-head">
+          <span style="font-family:var(--mono);font-size:12px;color:var(--ink-soft)" id="libInfo"></span>
+          <button class="btn small" id="libAddBtn">＋ 新增</button>
+        </div>
+        <div id="libTable"></div>
+        <div class="panel" id="libExtra" style="margin-top:16px"></div>
+      </div>
     </div>
-    <div id="libTable"></div>
-    <div class="panel" id="libExtra" style="margin-top:16px"></div>
   </section>
 
   <!-- ============ Agents ============ -->
