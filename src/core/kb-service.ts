@@ -20,6 +20,7 @@ import { batchEmbed, searchKnowledge } from './rag/ingest.ts';
 import { parseFile } from './rag/parser.ts';
 import type { EmbedFn, SearchHit } from './rag/types.ts';
 import { config } from '../config.ts';
+import { decryptSecret } from '../security.ts';
 
 export interface KbServiceDeps {
   db: AppDb;
@@ -116,7 +117,7 @@ export class KnowledgeBaseService {
     if (p) {
       const e = new OpenAICompatibleEmbedder({
         baseUrl: p.baseUrl,
-        apiKey: p.apiKey!,
+        apiKey: decryptSecret(p.apiKey!),
         model: kb.embeddingModel ?? p.embeddingModel!,
       });
       return e.embed.bind(e);

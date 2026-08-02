@@ -16,6 +16,8 @@ import { openDb, type AppDb } from './db/index.ts';
 import { buildRegistryFromDb, loadAgentsFromDb } from './db/loaders.ts';
 import { KnowledgeBaseService } from './core/kb-service.ts';
 import { McpManager } from './core/mcp.ts';
+import { logger, newRequestId } from './log.ts';
+import { configureSecretKey } from './security.ts';
 import { ModelRegistry } from './core/models.ts';
 import type { AgentDefinition } from './core/agent/assemble.ts';
 
@@ -31,6 +33,7 @@ export interface CreateAppOptions {
 }
 
 export function createApp(options: CreateAppOptions = {}): Hono {
+  configureSecretKey();
   const { db } = options.db ? { db: options.db } : openDb();
   const registry = options.registry ?? new ModelRegistry();
   const kb = options.kbService ?? new KnowledgeBaseService({ db });
@@ -49,6 +52,44 @@ export function createApp(options: CreateAppOptions = {}): Hono {
   }
 
   const app = new Hono();
+
+  // 结构化请求日志：requestId / method / path / status / durationMs（不记请求体与密钥）
+  app.use('*', async (c, next) => {
+    const requestId = newRequestId();
+    const start = performance.now();
+    try {
+      await next();
+    } finally {
+      logger.info('request', {
+        requestId,
+        method: c.req.method,
+        path: c.req.path,
+        status: c.res.status,
+        durationMs: Math.round((performance.now() - start) * 10) / 10,
+      });
+    }
+  });
+
+  // CORS：ASSEMBLE_ALLOW_ORIGINS（逗号分隔）；默认关闭
+  const allowOrigins = (config.allowOrigins ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  if (allowOrigins.length > 0) {
+    const set = new Set(allowOrigins);
+    app.use('*', async (c, next) => {
+      const origin = c.req.header('origin');
+      if (origin && set.has(origin)) {
+        c.header('Access-Control-Allow-Origin', origin);
+        c.header('Vary', 'Origin');
+        c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      }
+      if (c.req.method === 'OPTIONS') return c.body(null, 204);
+      await next();
+    });
+  }
+
   app.onError(handleApiError);
 
   // 可选鉴权：ASSEMBLE_API_KEY 存在时 /v1/* 要求 Bearer

@@ -1,0 +1,29 @@
+# assemble-agent 部署编排
+# 用法：docker compose up -d --build
+# 首次使用：docker compose exec app node scripts/seed.ts（或在管理页手动配置）
+services:
+  app:
+    build: .
+    container_name: assemble-agent
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8787}:8787"
+    environment:
+      # 鉴权：设置后 /v1/* 要求 Bearer
+      - ASSEMBLE_API_KEY=${ASSEMBLE_API_KEY:-}
+      # api_key 加密密钥（强烈建议设置；不设置则明文存储）
+      - ASSEMBLE_SECRET_KEY=${ASSEMBLE_SECRET_KEY:-}
+      # CORS 允许来源（逗号分隔；默认关闭）
+      - ASSEMBLE_ALLOW_ORIGINS=${ASSEMBLE_ALLOW_ORIGINS:-}
+      # 默认 LLM / 嵌入配置（seed 用；运行后由管理页 DB 配置驱动）
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - EMBEDDING_BASE_URL=${EMBEDDING_BASE_URL:-}
+      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY:-}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-}
+    volumes:
+      - assemble-data:/app/data
+
+volumes:
+  assemble-data:

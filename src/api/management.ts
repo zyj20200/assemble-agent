@@ -11,6 +11,7 @@ import type { AppDb } from '../db/index.ts';
 import { schema } from '../db/index.ts';
 import type { KnowledgeBaseService } from '../core/kb-service.ts';
 import { McpManager, type McpServerConfig } from '../core/mcp.ts';
+import { encryptSecret, decryptSecret } from '../security.ts';
 import { ApiError, ApiErrors } from './errors.ts';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -69,7 +70,7 @@ export function createManagementApp(deps: ManagementDeps): Hono {
 
   // ---------- Providers ----------
   app.get('/api/providers', (c) => {
-    const rows = db.select().from(schema.providers).all();
+    const rows = db.select().from(schema.providers).all().map((r) => ({ ...r, apiKey: r.apiKey ? decryptSecret(r.apiKey) : null }));
     return c.json({ items: rows, total: rows.length });
   });
   app.post('/api/providers', async (c) => {
@@ -81,7 +82,7 @@ export function createManagementApp(deps: ManagementDeps): Hono {
         .values({
           name,
           baseUrl: String(body.base_url),
-          apiKey: typeof body.api_key === 'string' ? body.api_key : null,
+          apiKey: typeof body.api_key === 'string' ? encryptSecret(body.api_key) : null,
           embeddingModel: typeof body.embedding_model === 'string' ? body.embedding_model : null,
           enabled: body.enabled !== false,
         })
@@ -97,7 +98,7 @@ export function createManagementApp(deps: ManagementDeps): Hono {
     const id = Number(c.req.param('id'));
     const row = db.select().from(schema.providers).where(eq(schema.providers.id, id)).get();
     if (!row) throw notFound('Provider', id);
-    return c.json(row);
+    return c.json({ ...row, apiKey: row.apiKey ? decryptSecret(row.apiKey) : null });
   });
   app.put('/api/providers/:id', async (c) => {
     const id = Number(c.req.param('id'));
@@ -108,7 +109,7 @@ export function createManagementApp(deps: ManagementDeps): Hono {
       .set({
         ...(typeof body.name === 'string' ? { name: body.name } : {}),
         ...(typeof body.base_url === 'string' ? { baseUrl: body.base_url } : {}),
-        ...(typeof body.api_key === 'string' ? { apiKey: body.api_key } : {}),
+        ...(typeof body.api_key === 'string' ? { apiKey: encryptSecret(body.api_key) } : {}),
         ...(typeof body.embedding_model === 'string' ? { embeddingModel: body.embedding_model } : {}),
         ...(typeof body.enabled === 'boolean' ? { enabled: body.enabled } : {}),
         updatedAt: new Date(),

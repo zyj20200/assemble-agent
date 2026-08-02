@@ -11,6 +11,7 @@ import type { AgentDefinition } from '../core/agent/assemble.ts';
 import type { KnowledgeBaseService } from '../core/kb-service.ts';
 import type { McpServerConfig } from '../core/mcp.ts';
 import type { SkillDef } from '../core/agent/skills.ts';
+import { decryptSecret } from '../security.ts';
 
 /** JSON 列安全解析 */
 function safeJson<T>(s: string | null): T | undefined {
@@ -36,7 +37,7 @@ export function buildRegistryFromDb(db: AppDb, registry: ModelRegistry): void {
     }));
     if (models.length === 0) continue;
     registry.registerProvider(
-      { id: String(p.id), name: p.name, baseUrl: p.baseUrl, apiKey: p.apiKey ?? undefined },
+      { id: String(p.id), name: p.name, baseUrl: p.baseUrl, apiKey: p.apiKey ? decryptSecret(p.apiKey) : undefined },
       models,
     );
   }
