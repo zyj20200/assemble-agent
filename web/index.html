@@ -592,7 +592,8 @@ const LIB = {
     row: m => [m.name, m.modelId, state.providers.find(p => p.id === m.providerId)?.name ?? m.providerId, m.temperature ?? '—', m.enabled ? '✓' : '✗'],
   },
   prompts: {
-    label: '提示词模板', wire: W.prompt,
+    kind: 'prompts', label: '提示词模板', wire: W.prompt,
+    copyable: true,
     cols: ['name','description','content','enabled'],
     headers: ['名称','说明','内容','启用'],
     form: [
@@ -607,7 +608,8 @@ const LIB = {
     row: p => [p.name, p.description ?? '—', p.content.length > 40 ? p.content.slice(0,40)+'…' : p.content, p.enabled ? '✓' : '✗'],
   },
   skills: {
-    label: '技能', wire: W.skill,
+    kind: 'skills', label: '技能', wire: W.skill,
+    copyable: true,
     cols: ['name','description','content','enabled'],
     headers: ['名称','说明','内容','启用'],
     form: [
@@ -761,6 +763,11 @@ function openLibModalById(kind, id) {
   openLibModal(cfg, existing);
 }
 function openLibModal(cfg, existing) {
+  // 新增模式 + 可复制实体（提示词/技能）：支持从已有条目复制为模板起点
+  const copySelect = (!existing && cfg.copyable)
+    ? `<div class="field"><label>从模板复制（可选，选中后填入下方表单，修改局部即可）</label>
+        <select id="copyFrom"><option value="">（空白新建）</option>${state[stateKeyOf(cfg.kind)].map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></div>`
+    : '';
   const fields = cfg.form.map(f => {
     let val = existing ? existing[f.k] : '';
     const opts = typeof f.opts === 'function' ? f.opts() : (f.opts ?? []);
@@ -771,11 +778,26 @@ function openLibModal(cfg, existing) {
     else input = `<input type="text" id="f_${f.k}" value="${esc(val)}">`;
     return `<div class="field"><label>${f.label}${f.required?' *':''}</label>${input}</div>`;
   }).join('');
-  modal(`<h3>${existing ? '编辑' : '新增'} · ${cfg.label}</h3><div class="row" style="grid-template-columns:1fr">${fields}</div>
+  modal(`<h3>${existing ? '编辑' : '新增'} · ${cfg.label}</h3>
+    <div class="row" style="grid-template-columns:1fr">${copySelect}${fields}</div>
     <div class="actions">
       <button class="btn" onclick="closeModal()">取消</button>
       <button class="btn primary" id="modalOk">保存</button>
     </div>`);
+  if (copySelect) {
+    $('#copyFrom').onchange = () => {
+      const srcId = Number($('#copyFrom').value);
+      if (!srcId) return;
+      const src = state[stateKeyOf(cfg.kind)].find((x) => x.id === srcId);
+      if (!src) return;
+      // 复制内容字段；name 预填源名供用户改名
+      for (const f of cfg.form) {
+        if (f.k === 'name') { const el = $('#f_name'); if (el) el.value = src.name + '（副本）'; continue; }
+        const el = $('#f_' + f.k);
+        if (el && src[f.k] !== undefined && src[f.k] !== null) el.value = String(src[f.k]);
+      }
+    };
+  }
   $('#modalOk').onclick = async () => {
     const body = {};
     let miss = false;
