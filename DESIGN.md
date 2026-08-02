@@ -445,7 +445,7 @@ Document 1 ──── * Chunk  (Chunk.embedding 向量, Chunk.kb_id 冗余索�
 
 ---
 
-## 7. Web 管理页面设计
+## 7. Web 管理页面设计（✅ 已实现，`web/index.html` 单文件自包含，hash 路由可深链）
 
 单页应用（`/`），**工程图纸/装配台风格**（样式参考 `reference/动态智能体`）：图纸白底 + 32px 网格线、墨青描边方角、五类组件专属线色（模型蓝 `#245A8D` / 提示词红 `#A03A3A` / MCP 绿 `#0F7A5A` / 技能棕 `#8A5A24` / 知识库紫 `#6B4B8A`）、等宽 mono 标签。顶栏导航（装配台 / 资源库 / Agents）+ 状态胶囊（未发布/已发布），三个视图：
 
@@ -506,7 +506,7 @@ assemble-agent/
 │   │   │   └── index.ts
 │   │   └── prompt-builder.ts  # 提示词组装（§6.5）
 │   └── web/
-│       ├── prototype.html     # 交互原型：工程图纸风装配台（装配→发布→测试全链路）
+│       ├── prototype.html     # 静态交互原型（设计参考，保留）
 │       ├── index.html         # 正式管理页（实现阶段）
 │       └── app.js / style.css
 ├── scripts/
@@ -528,7 +528,7 @@ assemble-agent/
 | **M2 骨架** | TS 工程脚手架、DB/ORM/schema、管理 CRUD 全通 | 🔄 脚手架/测试基建完成，CRUD 待写 |
 | **M3 对话链路** | pi-ai 模型层 + pi-agent-core 运行时 + `/v1/chat/completions`（非流式+流式） | ✅ **完成**（10 项 API 集成测试：SSE 序列/客户端工具/错误映射；真实网关验证 503 路径） |
 | **M4 组件接入** | MCP（stdio+http）+ Skills 注入 + 知识库上传/检索 | 🔄 **知识库 RAG 已落地**（含 pgvector 真库测试）；MCP/Skills 待接 |
-| **M5 管理页面** | 正式 index.html 对接全部管理 API + 对话测试 | ⬜ 未开始 |
+| **M5 管理页面** | 正式 index.html 对接全部管理 API + 对话测试 | ✅ **完成**（`web/index.html` 单文件自包含：装配台/资源库/Agents 三视图 + 真实 SSE 试运行；headless Chrome 验证 4 视图渲染） |
 | **M6 硬化** | 错误码、超时、日志、安全项（§8）、种子数据 | ⬜ 未开始 |
 
 ### 10.1 决策记录（ADR 摘要）

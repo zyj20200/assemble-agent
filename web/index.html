@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>assemble-agent · 装配台</title>
+<style>
+  :root{
+    --bg:#EDF0EB; --panel:#F8FAF6; --ink:#1A2B30; --ink-soft:#4A5D62;
+    --line:#B7C3BD; --accent:#D4581D;
+    --w-model:#245A8D; --w-prompt:#A03A3A; --w-mcp:#0F7A5A; --w-skill:#8A5A24; --w-kb:#6B4B8A;
+    --mono:"JetBrains Mono","SF Mono","Cascadia Code",ui-monospace,Menlo,Consolas,monospace;
+    --sans:"PingFang SC","Noto Sans CJK SC","Source Han Sans SC","Microsoft YaHei",sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    background:var(--bg);
+    background-image:linear-gradient(var(--line) .5px,transparent .5px),linear-gradient(90deg,var(--line) .5px,transparent .5px);
+    background-size:32px 32px;background-attachment:fixed;
+    color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.65;
+  }
+  .wrap{max-width:1460px;margin:0 auto;padding:24px 24px 90px}
+  .hidden{display:none!important}
+
+  /* ── 顶栏 ── */
+  .topbar{border:1.5px solid var(--ink);background:var(--panel);display:flex;align-items:center;gap:18px;padding:13px 22px;margin-bottom:20px;flex-wrap:wrap}
+  .topbar .logo{font-weight:800;font-size:17px;letter-spacing:.04em}
+  .topbar .logo .v{font-family:var(--mono);font-size:10px;color:var(--ink-soft);border:1px solid var(--line);padding:1px 6px;margin-left:8px;letter-spacing:.12em;vertical-align:2px}
+  .topnav a{font-family:var(--mono);font-size:12px;color:var(--ink-soft);text-decoration:none;padding:6px 14px;border:1.5px solid transparent;cursor:pointer;letter-spacing:.08em}
+  .topnav a:hover{border-color:var(--line)}
+  .topnav a.active{border:1.5px solid var(--ink);color:var(--ink);background:#fff}
+  .topbar .crumb{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-soft);letter-spacing:.12em}
+  .status-pill{font-family:var(--mono);font-size:11px;padding:4px 12px;border:1.5px solid var(--ink);background:#E2E7E0;color:var(--ink-soft)}
+  .status-pill.ok{background:#DCE6E2;border-color:var(--w-mcp);color:var(--w-mcp)}
+  .status-pill.err{background:#F3DDD5;border-color:var(--w-prompt);color:var(--w-prompt)}
+
+  h3{font-size:13px;letter-spacing:.14em;color:var(--ink-soft);margin-bottom:12px;font-family:var(--mono)}
+  h4{font-size:12px;margin-bottom:8px;letter-spacing:.06em}
+  .panel{border:1.5px solid var(--ink);background:var(--panel);padding:16px;margin-bottom:18px}
+
+  /* ── 装配台三栏 ── */
+  .assemble-grid{display:grid;grid-template-columns:320px 1fr 380px;gap:18px;align-items:start}
+  @media(max-width:1200px){.assemble-grid{grid-template-columns:1fr}}
+  .picker{border:1px solid var(--line);padding:10px 12px;margin-bottom:10px;background:#fff}
+  .picker .title{font-family:var(--mono);font-size:11px;letter-spacing:.1em;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:2px}
+  .pick-item{display:flex;align-items:center;gap:8px;padding:5px 4px;border-bottom:1px dashed var(--line);cursor:pointer;font-size:13px}
+  .pick-item:hover{background:var(--bg)}
+  .pick-item input{accent-color:var(--ink)}
+  .pick-item .meta{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ink-soft);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pick-empty{font-size:12px;color:var(--ink-soft);padding:6px 4px;font-family:var(--mono)}
+  .pick-empty a{color:var(--accent);cursor:pointer;text-decoration:underline}
+
+  .bus .field{margin-bottom:12px}
+  .bus label{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ink-soft);margin-bottom:5px}
+  .bus input[type=text],.bus textarea,.bus input[type=number],.bus select{
+    width:100%;border:1px solid var(--line);background:#fff;padding:8px 10px;font-size:13px;font-family:var(--sans);color:var(--ink)
+  }
+  .bus textarea{min-height:120px;resize:vertical;font-family:var(--mono);font-size:12px}
+  .bus input:focus,.bus textarea:focus{outline:1.5px solid var(--accent)}
+  .params-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .slot{display:flex;align-items:center;gap:10px;border:1.5px dashed var(--line);padding:8px 10px;margin-bottom:8px;background:#fff}
+  .slot .tag{font-family:var(--mono);font-size:10px;letter-spacing:.12em;padding:2px 8px;border:1px solid var(--ink);flex-shrink:0}
+  .slot .chip{font-size:12px;display:flex;flex-wrap:wrap;gap:6px}
+  .chip span{background:var(--bg);border:1px solid var(--line);padding:1px 8px;font-family:var(--mono);font-size:11px}
+  .chip span b{cursor:pointer;color:var(--w-prompt);margin-left:4px}
+  .btn{font-family:var(--mono);font-size:12px;letter-spacing:.1em;padding:9px 22px;border:1.5px solid var(--ink);background:#fff;cursor:pointer;color:var(--ink)}
+  .btn:hover{background:var(--ink);color:#fff}
+  .btn.primary{background:var(--ink);color:#fff}
+  .btn.primary:hover{background:var(--accent);border-color:var(--accent)}
+  .btn.small{padding:3px 10px;font-size:11px}
+  .btn.danger{border-color:var(--w-prompt);color:var(--w-prompt)}
+  .btn.danger:hover{background:var(--w-prompt);color:#fff}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+
+  .api .tabs{display:flex;gap:0;margin-bottom:10px}
+  .api .tabs button{font-family:var(--mono);font-size:11px;padding:6px 14px;border:1.5px solid var(--line);background:#fff;cursor:pointer;color:var(--ink-soft)}
+  .api .tabs button.active{border-color:var(--ink);color:var(--ink);background:var(--bg)}
+  pre.code{background:#10181C;color:#D6E4E0;padding:14px;font-family:var(--mono);font-size:12px;overflow:auto;border-radius:2px;white-space:pre-wrap;word-break:break-all}
+  .chat-box{border:1px solid var(--line);background:#fff}
+  .chat-msgs{padding:10px;min-height:180px;max-height:340px;overflow:auto;font-size:13px}
+  .chat-msg{margin-bottom:8px}
+  .chat-msg .who{font-family:var(--mono);font-size:10px;color:var(--ink-soft);letter-spacing:.1em}
+  .chat-msg.user .body{background:var(--bg);padding:6px 10px;display:inline-block}
+  .chat-msg.assistant .body{color:var(--ink)}
+  .chat-msg.tool .body{font-family:var(--mono);font-size:11px;color:var(--w-skill);border-left:2px solid var(--w-skill);padding-left:8px}
+  .chat-input{display:flex;border-top:1px solid var(--line)}
+  .chat-input input{flex:1;border:0;padding:10px;font-size:13px;outline:none}
+  .chat-input .btn{border:0;border-left:1px solid var(--line)}
+
+  /* ── 资源库 ── */
+  .lib-tabs{display:flex;gap:0;margin-bottom:14px;flex-wrap:wrap}
+  .lib-tabs button{font-family:var(--mono);font-size:12px;padding:8px 18px;border:1.5px solid var(--line);background:var(--panel);cursor:pointer;color:var(--ink-soft);letter-spacing:.08em}
+  .lib-tabs button.active{border-color:var(--ink);color:var(--ink);background:#fff}
+  .lib-tabs button .cnt{font-size:10px;vertical-align:2px}
+  .lib-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+  table{width:100%;border-collapse:collapse;background:#fff;font-size:13px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--ink-soft);background:var(--bg)}
+  td .actions{white-space:nowrap}
+  td .actions .btn{margin-right:6px}
+  .tag{font-family:var(--mono);font-size:10px;padding:1px 6px;border:1px solid var(--line);color:var(--ink-soft)}
+  .doc-upload{display:inline-flex;gap:6px;align-items:center}
+  .doc-upload input[type=file]{font-size:11px}
+  .toast{position:fixed;right:24px;top:24px;z-index:99;padding:10px 18px;border:1.5px solid var(--ink);background:var(--panel);font-size:13px;box-shadow:3px 3px 0 rgba(0,0,0,.15);max-width:360px}
+  .toast.err{border-color:var(--w-prompt);color:var(--w-prompt)}
+  .toast.ok{border-color:var(--w-mcp);color:var(--w-mcp)}
+
+  /* ── 模态框 ── */
+  .modal-mask{position:fixed;inset:0;background:rgba(26,43,48,.45);display:flex;align-items:flex-start;justify-content:center;padding:60px 20px;z-index:50;overflow:auto}
+  .modal{background:var(--panel);border:1.5px solid var(--ink);width:560px;max-width:100%;padding:20px;box-shadow:6px 6px 0 rgba(0,0,0,.18)}
+  .modal h3{margin-bottom:14px}
+  .modal .field{margin-bottom:12px}
+  .modal label{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ink-soft);margin-bottom:4px}
+  .modal input[type=text],.modal input[type=number],.modal textarea,.modal select{width:100%;border:1px solid var(--line);background:#fff;padding:7px 9px;font-size:13px}
+  .modal textarea{min-height:70px;resize:vertical;font-family:var(--mono);font-size:12px}
+  .modal .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .modal .actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+
+  /* ── Agents 卡片 ── */
+  .agents-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px}
+  .agent-card{border:1.5px solid var(--ink);background:var(--panel);padding:16px}
+  .agent-card .name{font-size:16px;font-weight:800;display:flex;align-items:center;gap:10px}
+  .agent-card .name .tag{margin-left:auto}
+  .agent-card .desc{font-size:12px;color:var(--ink-soft);margin:6px 0 10px}
+  .agent-card .lines{font-family:var(--mono);font-size:11px;margin-bottom:10px}
+  .agent-card .lines div{padding:2px 0;border-bottom:1px dashed var(--line)}
+  .agent-card .lines b{letter-spacing:.08em}
+  .agent-card .card-actions{display:flex;gap:8px}
+  .run-log{font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-top:8px;max-height:120px;overflow:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar">
+    <div class="logo">ASSEMBLE<span class="v">v0.5</span></div>
+    <nav class="topnav">
+      <a data-view="assembly" class="active">装配台</a>
+      <a data-view="library">资源库</a>
+      <a data-view="agents">Agents</a>
+    </nav>
+    <div class="crumb">POST /v1/chat/completions · model = Agent 名</div>
+    <span class="status-pill" id="statusPill">加载中…</span>
+  </header>
+
+  <!-- ============ 装配台 ============ -->
+  <section id="view-assembly" class="view">
+    <div class="assemble-grid">
+      <!-- ① 资源库点选 -->
+      <div class="col">
+        <h3>① 资源库点选</h3>
+        <div class="picker">
+          <div class="title"><span class="dot" style="background:var(--w-model)"></span>MODEL · 单选必选</div>
+          <div id="pick-models" class="pick-empty">加载中…</div>
+        </div>
+        <div class="picker">
+          <div class="title"><span class="dot" style="background:var(--w-skill)"></span>SKILL · 多选</div>
+          <div id="pick-skills" class="pick-empty">加载中…</div>
+        </div>
+        <div class="picker">
+          <div class="title"><span class="dot" style="background:var(--w-mcp)"></span>MCP · 多选</div>
+          <div id="pick-mcps" class="pick-empty">加载中…</div>
+        </div>
+        <div class="picker">
+          <div class="title"><span class="dot" style="background:var(--w-kb)"></span>KNOWLEDGE BASE · 多选</div>
+          <div id="pick-kbs" class="pick-empty">加载中…</div>
+        </div>
+      </div>
+
+      <!-- ② 装配台 -->
+      <div class="col bus">
+        <h3>② 装配台</h3>
+        <div class="field"><label>AGENT NAME（= /v1 的 model 名）</label>
+          <input type="text" id="agentName" placeholder="如：客服小助手">
+        </div>
+        <div class="field"><label>SYSTEM PROMPT（模板，支持 {{skills}} 占位符）</label>
+          <textarea id="systemPrompt" placeholder="你是…。需要事实依据时调用知识库检索。">{{skills}}</textarea>
+        </div>
+        <div class="params-grid">
+          <div class="field"><label>TEMPERATURE</label><input type="number" id="temperature" step="0.1" min="0" max="2" placeholder="默认"></div>
+          <div class="field"><label>MAX TOKENS</label><input type="number" id="maxTokens" min="1" placeholder="默认"></div>
+          <div class="field"><label>RAG MODE</label>
+            <select id="ragMode"><option value="auto">auto（工具式）</option><option value="always">always（注入式）</option></select>
+          </div>
+        </div>
+        <div class="field" style="margin-top:10px">
+          <label>接线槽</label>
+          <div class="slot"><span class="tag" style="color:var(--w-model)">MODEL</span><div class="chip" id="slot-model"></div></div>
+          <div class="slot"><span class="tag" style="color:var(--w-prompt)">PROMPT</span><div class="chip" id="slot-prompt"></div></div>
+          <div class="slot"><span class="tag" style="color:var(--w-mcp)">MCP</span><div class="chip" id="slot-mcp"></div></div>
+          <div class="slot"><span class="tag" style="color:var(--w-skill)">SKILL</span><div class="chip" id="slot-skill"></div></div>
+          <div class="slot"><span class="tag" style="color:var(--w-kb)">KNOWLEDGE</span><div class="chip" id="slot-kb"></div></div>
+        </div>
+        <button class="btn primary" id="publishBtn" style="width:100%">发布智能体</button>
+        <div class="run-log" id="publishLog"></div>
+      </div>
+
+      <!-- ③ 对外接口 -->
+      <div class="col api">
+        <h3>③ 对外接口</h3>
+        <div class="tabs">
+          <button data-t="curl" class="active">接入示例</button>
+          <button data-t="run">试运行</button>
+        </div>
+        <div id="tab-curl">
+          <pre class="code" id="curlSnippet">// 发布后此处生成 curl 示例</pre>
+        </div>
+        <div id="tab-run" class="hidden">
+          <div class="chat-box">
+            <div class="chat-msgs" id="runMsgs"></div>
+            <div class="chat-input">
+              <input type="text" id="runInput" placeholder="输入消息，回车发送（model = 下方选择）">
+              <button class="btn" id="runSend">发送</button>
+            </div>
+          </div>
+          <div class="field" style="margin-top:8px"><label>TARGET AGENT</label>
+            <select id="runAgent"></select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 资源库 ============ -->
+  <section id="view-library" class="view hidden">
+    <div class="lib-tabs" id="libTabs"></div>
+    <div class="lib-head">
+      <span style="font-family:var(--mono);font-size:12px;color:var(--ink-soft)" id="libInfo"></span>
+      <button class="btn small" id="libAddBtn">＋ 新增</button>
+    </div>
+    <div id="libTable"></div>
+    <div class="panel" id="libExtra" style="margin-top:16px"></div>
+  </section>
+
+  <!-- ============ Agents ============ -->
+  <section id="view-agents" class="view hidden">
+    <div class="agents-grid" id="agentsGrid"></div>
+  </section>
+</div>
+
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+
+<script>
+'use strict';
+window.__errs = [];
+window.addEventListener('error', e => window.__errs.push(e.message + ' @' + (e.lineno||'?') + ':' + (e.colno||'?')));
+/* ============================================================
+   assemble-agent 管理页 —— 对接真实 /api/* 与 /v1/*
+   ============================================================ */
+const $ = (sel) => document.querySelector(sel);
+const W = { model:'#245A8D', prompt:'#A03A3A', mcp:'#0F7A5A', skill:'#8A5A24', kb:'#6B4B8A' };
+const stateKeyOf = (k) => k === 'mcp' ? 'mcps' : k === 'kb' ? 'kbs' : k;
+
+/* ---------- 通用 ---------- */
+async function api(path, opts={}) {
+  const res = await fetch(path, {
+    headers: opts.body ? { 'Content-Type':'application/json' } : undefined,
+    ...opts,
+  });
+  if (res.status === 204) return null;
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg = data?.error?.message || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return data;
+}
+function toast(msg, ok=false) {
+  const el = document.createElement('div');
+  el.className = 'toast ' + (ok ? 'ok' : 'err');
+  el.textContent = msg;
+  $('#toastRoot').appendChild(el);
+  setTimeout(() => el.remove(), 3800);
+}
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function modal(html) { $('#modalRoot').innerHTML = `<div class="modal-mask" onclick="if(event.target===this)closeModal()"><div class="modal">${html}</div></div>`; }
+function closeModal() { $('#modalRoot').innerHTML = ''; }
+
+/* ---------- 状态 ---------- */
+let state = { providers:[], models:[], skills:[], mcps:[], kbs:[], agents:[] };
+async function refreshAll() {
+  const [providers, models, skills, mcps, kbs, agents] = await Promise.all([
+    api('/api/providers').then(d => d.items),
+    api('/api/models').then(d => d.items),
+    api('/api/skills').then(d => d.items),
+    api('/api/mcp-servers').then(d => d.items),
+    api('/api/knowledge-bases').then(d => d.items),
+    api('/api/agents').then(d => d.items),
+  ]);
+  state = { providers, models, skills, mcps, kbs, agents };
+}
+async function refreshStatus() {
+  try {
+    const h = await api('/api/health');
+    const pill = $('#statusPill');
+    pill.className = 'status-pill ok';
+    pill.textContent = `OK · ${h.agents} agents · ${h.providers} providers`;
+  } catch (e) {
+    const pill = $('#statusPill');
+    pill.className = 'status-pill err';
+    pill.textContent = '服务不可达';
+  }
+}
+
+/* ---------- 视图切换 ---------- */
+const views = ['assembly','library','agents'];
+function showView(v) {
+  if (!views.includes(v)) v = 'assembly';
+  history.replaceState(null, '', '#' + v);
+  views.forEach(x => $('#view-'+x).classList.toggle('hidden', x !== v));
+  document.querySelectorAll('.topnav a').forEach(a => a.classList.toggle('active', a.dataset.view === v));
+  if (v === 'assembly') renderAssembly();
+  if (v === 'library') renderLibrary();
+  if (v === 'agents') renderAgents();
+}
+document.querySelectorAll('.topnav a').forEach(a => a.onclick = () => showView(a.dataset.view));
+window.addEventListener('hashchange', () => showView(location.hash.slice(1)));
+
+/* ============================================================
+   装配台
+   ============================================================ */
+let sel = { model:null, skills:[], mcps:[], kbs:[] };
+
+function renderAssembly() {
+  // 模型单选
+  const pick = $('#pick-models');
+  const items = state.models.filter(m => state.providers.find(p => p.id === m.providerId && p.enabled !== false));
+  pick.innerHTML = items.length === 0
+    ? `<div class="pick-empty">暂无模型 <a onclick="showView('library')">去资源库添加</a></div>`
+    : items.map(m => {
+        const p = state.providers.find(x => x.id === m.providerId);
+        return `<div class="pick-item"><input type="radio" name="pmodel" value="${m.id}" ${sel.model===m.id?'checked':''} onchange="sel.model=Number(this.value);renderAssembly()">
+          <span>${esc(m.name)}</span><span class="meta">${esc(p?.name??'')} · ${esc(m.modelId)}</span></div>`;
+      }).join('');
+  // 多选
+  const multi = (list, key, wire) => list.length === 0
+    ? `<div class="pick-empty">暂无 · <a onclick="showView('library')">去添加</a></div>`
+    : list.map(x => `<div class="pick-item"><input type="checkbox" ${sel[key].includes(x.id)?'checked':''} onchange="toggleSel('${key}',${x.id},this.checked)">
+        <span style="color:${wire}">${esc(x.name)}</span><span class="meta">${esc(x.description??'')}</span></div>`).join('');
+  $('#pick-skills').innerHTML = multi(state.skills, 'skills', W.skill);
+  $('#pick-mcps').innerHTML   = multi(state.mcps,   'mcps',   W.mcp);
+  $('#pick-kbs').innerHTML    = multi(state.kbs,    'kbs',    W.kb);
+  renderSlots();
+}
+function toggleSel(key, id, on) {
+  const arr = sel[key];
+  if (on && !arr.includes(id)) arr.push(id);
+  if (!on) { const i = arr.indexOf(id); if (i>=0) arr.splice(i,1); }
+  renderSlots();
+}
+function renderSlots() {
+  const chip = (wire, list, kind) => list.length === 0
+    ? `<span style="color:var(--ink-soft)">— 未接线</span>`
+    : list.map(x => `<span style="border-color:${wire};color:${wire}">${esc(x.name)}<b onclick="detach('${kind}',${x.id})">✕</b></span>`).join('');
+  $('#slot-model').innerHTML = sel.model
+    ? (() => { const m = state.models.find(x => x.id === sel.model); return `<span style="border-color:${W.model};color:${W.model}">${esc(m?.name??sel.model)}<b onclick="sel.model=null;renderAssembly()">✕</b></span>`; })()
+    : '<span style="color:var(--ink-soft)">— 未接线</span>';
+  $('#slot-prompt').innerHTML = '<span style="color:var(--w-prompt)">system_prompt 模板</span>';
+  $('#slot-mcp').innerHTML    = chip(W.mcp,    state.mcps.filter(x => sel.mcps.includes(x.id)), 'mcps');
+  $('#slot-skill').innerHTML  = chip(W.skill,  state.skills.filter(x => sel.skills.includes(x.id)), 'skills');
+  $('#slot-kb').innerHTML     = chip(W.kb,     state.kbs.filter(x => sel.kbs.includes(x.id)), 'kbs');
+  renderCurl();
+}
+function detach(kind, id) {
+  if (kind === 'mcps') toggleSel('mcps', id, false);
+  if (kind === 'skills') toggleSel('skills', id, false);
+  if (kind === 'kbs') toggleSel('kbs', id, false);
+}
+
+async function publishAgent() {
+  const name = $('#agentName').value.trim();
+  const sp = $('#systemPrompt').value.trim();
+  const log = $('#publishLog');
+  log.textContent = '';
+  if (!name) return toast('请输入 Agent 名称');
+  if (!sel.model) return toast('请选择模型');
+  const body = {
+    name,
+    system_prompt: sp || '你是一个乐于助人的助手。',
+    model_id: sel.model,
+    skill_ids: sel.skills,
+    mcp_server_ids: sel.mcps,
+    knowledge_base_ids: sel.kbs,
+    rag_mode: $('#ragMode').value,
+  };
+  const t = $('#temperature').value, m = $('#maxTokens').value;
+  if (t) body.temperature = Number(t);
+  if (m) body.max_tokens = Number(m);
+  try {
+    const agent = await api('/api/agents', { method:'POST', body: JSON.stringify(body) });
+    toast(`已发布「${agent.name}」`, true);
+    log.textContent = `✅ 已发布 agent:${agent.name}（id=${agent.id}）`;
+    await refreshAll();
+    fillRunAgentSelect();
+  } catch (e) {
+    log.textContent = '❌ ' + e.message;
+    toast('发布失败：' + e.message);
+  }
+}
+$('#publishBtn').onclick = publishAgent;
+
+function renderCurl() {
+  const name = $('#agentName').value.trim() || '客服小助手';
+  $('#curlSnippet').textContent =
+`curl -X POST http://localhost:8787/v1/chat/completions \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "${name}",
+    "messages": [{"role": "user", "content": "你好"}],
+    "stream": true
+  }'`;
+}
+
+/* ---------- 试运行（真实 SSE 流式） ---------- */
+function fillRunAgentSelect() {
+  $('#runAgent').innerHTML = state.agents.map(a => `<option value="${esc(a.name)}">${esc(a.name)}</option>`).join('')
+    || '<option value="">（暂无 Agent）</option>';
+}
+function appendMsg(role, text) {
+  const box = $('#runMsgs');
+  const d = document.createElement('div');
+  d.className = 'chat-msg ' + role;
+  const who = role === 'user' ? 'USER' : role === 'tool' ? 'TOOL' : 'ASSISTANT';
+  d.innerHTML = `<div class="who">${who}</div><div class="body"></div>`;
+  d.querySelector('.body').textContent = text;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+  return d;
+}
+async function runChat() {
+  const input = $('#runInput');
+  const text = input.value.trim();
+  const model = $('#runAgent').value;
+  if (!text) return;
+  if (!model) return toast('请先在资源库发布 Agent');
+  input.value = '';
+  appendMsg('user', text);
+  const assistantEl = appendMsg('assistant', '');
+  try {
+    const res = await fetch('/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ model, messages:[{ role:'user', content:text }], stream:true }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      assistantEl.querySelector('.body').textContent = '❌ ' + (err?.error?.message || `HTTP ${res.status}`);
+      return;
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    const body = assistantEl.querySelector('.body');
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream:true });
+      const lines = buf.split('\n');
+      buf = lines.pop() ?? '';
+      for (const line of lines) {
+        const s = line.trim();
+        if (!s.startsWith('data: ')) continue;
+        const payload = s.slice(6);
+        if (payload === '[DONE]') continue;
+        try {
+          const chunk = JSON.parse(payload);
+          if (chunk.error) { body.textContent = '❌ ' + chunk.error.message; continue; }
+          const delta = chunk.choices?.[0]?.delta;
+          if (delta?.content) body.textContent += delta.content;
+          if (delta?.tool_calls) {
+            const name = delta.tool_calls[0]?.function?.name;
+            if (name) appendMsg('tool', '请求客户端工具：' + name);
+          }
+        } catch { /* 忽略无法解析的行 */ }
+      }
+    }
+  } catch (e) {
+    assistantEl.querySelector('.body').textContent = '❌ ' + e.message;
+  }
+}
+$('#runSend').onclick = runChat;
+$('#runInput').addEventListener('keydown', e => { if (e.key === 'Enter') runChat(); });
+
+/* ============================================================
+   资源库
+   ============================================================ */
+const LIB = {
+  providers: {
+    label: 'Provider', wire: W.model,
+    cols: ['name','base_url','embedding_model','enabled'],
+    headers: ['名称','Base URL','嵌入模型','启用'],
+    form: [
+      { k:'name', label:'名称', required:true },
+      { k:'base_url', label:'Base URL（OpenAI 兼容端点）', required:true },
+      { k:'api_key', label:'API Key' },
+      { k:'embedding_model', label:'嵌入模型（可选）' },
+      { k:'enabled', label:'启用', type:'select', opts:[[true,'是'],[false,'否']] },
+    ],
+    create: b => api('/api/providers', { method:'POST', body: JSON.stringify(b) }),
+    update: (id,b) => api(`/api/providers/${id}`, { method:'PUT', body: JSON.stringify(b) }),
+    remove: id => api(`/api/providers/${id}`, { method:'DELETE' }),
+    row: p => [p.name, p.baseUrl, p.embeddingModel ?? '—', p.enabled ? '✓' : '✗'],
+  },
+  models: {
+    label: '模型', wire: W.model,
+    cols: ['name','model_id','provider_id','temperature','enabled'],
+    headers: ['名称','上游模型 ID','Provider','温度','启用'],
+    form: [
+      { k:'name', label:'展示名', required:true },
+      { k:'model_id', label:'上游模型 ID（如 deepseek-v4-flash）', required:true },
+      { k:'provider_id', label:'所属 Provider', type:'select', opts: () => state.providers.map(p => [p.id, p.name]), required:true },
+      { k:'temperature', label:'默认温度', type:'number', step:0.1 },
+      { k:'enabled', label:'启用', type:'select', opts:[[true,'是'],[false,'否']] },
+    ],
+    create: b => api('/api/models', { method:'POST', body: JSON.stringify(b) }),
+    update: (id,b) => api(`/api/models/${id}`, { method:'PUT', body: JSON.stringify(b) }),
+    remove: id => api(`/api/models/${id}`, { method:'DELETE' }),
+    row: m => [m.name, m.modelId, state.providers.find(p => p.id === m.providerId)?.name ?? m.providerId, m.temperature ?? '—', m.enabled ? '✓' : '✗'],
+  },
+  skills: {
+    label: '技能', wire: W.skill,
+    cols: ['name','description','content','enabled'],
+    headers: ['名称','说明','内容','启用'],
+    form: [
+      { k:'name', label:'名称', required:true },
+      { k:'description', label:'用途说明' },
+      { k:'content', label:'Markdown 指令内容', type:'textarea', required:true },
+      { k:'enabled', label:'启用', type:'select', opts:[[true,'是'],[false,'否']] },
+    ],
+    create: b => api('/api/skills', { method:'POST', body: JSON.stringify(b) }),
+    update: (id,b) => api(`/api/skills/${id}`, { method:'PUT', body: JSON.stringify(b) }),
+    remove: id => api(`/api/skills/${id}`, { method:'DELETE' }),
+    row: s => [s.name, s.description ?? '—', s.content.length > 40 ? s.content.slice(0,40)+'…' : s.content, s.enabled ? '✓' : '✗'],
+  },
+  mcp: {
+    label: 'MCP', wire: W.mcp,
+    cols: ['name','transport','command','url','enabled'],
+    headers: ['名称','传输','命令 / URL','端点','启用'],
+    form: [
+      { k:'name', label:'名称', required:true },
+      { k:'transport', label:'传输', type:'select', opts:[['stdio','stdio'],[['http'],'http']] },
+      { k:'command', label:'命令（stdio）' },
+      { k:'args', label:'参数（JSON 数组）' },
+      { k:'url', label:'URL（http）' },
+      { k:'headers', label:'Headers（JSON）' },
+      { k:'enabled', label:'启用', type:'select', opts:[[true,'是'],[false,'否']] },
+    ],
+    parse: b => {
+      for (const f of ['args','headers','env']) {
+        if (typeof b[f] === 'string' && b[f].trim()) { try { b[f] = JSON.parse(b[f]); } catch { /* 保留原串 */ } }
+      }
+      return b;
+    },
+    create: b => api('/api/mcp-servers', { method:'POST', body: JSON.stringify(LIB.mcp.parse(b)) }),
+    update: (id,b) => api(`/api/mcp-servers/${id}`, { method:'PUT', body: JSON.stringify(LIB.mcp.parse(b)) }),
+    remove: id => api(`/api/mcp-servers/${id}`, { method:'DELETE' }),
+    row: m => [m.name, m.transport, m.command ?? (m.url ?? '—'), m.url ?? '—', m.enabled ? '✓' : '✗'],
+  },
+  kb: {
+    label: '知识库', wire: W.kb,
+    cols: ['name','chunk_size','top_k','min_score','documents'],
+    headers: ['名称','切块','TopK','阈值','文档数'],
+    form: [
+      { k:'name', label:'名称', required:true },
+      { k:'description', label:'说明' },
+      { k:'chunk_size', label:'切块字符数', type:'number' },
+      { k:'chunk_overlap', label:'重叠', type:'number' },
+      { k:'embedding_model', label:'嵌入模型（覆盖默认）' },
+      { k:'top_k', label:'TopK', type:'number' },
+      { k:'min_score', label:'相似度阈值', type:'number', step:0.05 },
+    ],
+    create: b => api('/api/knowledge-bases', { method:'POST', body: JSON.stringify(b) }),
+    update: (id,b) => api(`/api/knowledge-bases/${id}`, { method:'PUT', body: JSON.stringify(b) }),
+    remove: id => api(`/api/knowledge-bases/${id}`, { method:'DELETE' }),
+    row: k => [k.name, k.chunkSize, k.topK, k.minScore, '—'],
+  },
+};
+const LIB_KEYS = ['providers','models','skills','mcp','kb'];
+let libTab = 'providers';
+
+function renderLibrary() {
+  $('#libTabs').innerHTML = LIB_KEYS.map(k => {
+    const cfg = LIB[k]; const count = state[stateKeyOf(k)].length;
+    return `<button data-k="${k}" class="${k===libTab?'active':''}" onclick="libTab='${k}';renderLibrary()">${cfg.label} <span class="cnt">${count}</span></button>`;
+  }).join('');
+  const cfg = LIB[libTab];
+  const list = state[stateKeyOf(libTab)];
+  $('#libInfo').textContent = `${cfg.label} · 共 ${list.length} 条`;
+  $('#libAddBtn').textContent = `＋ 新增 ${cfg.label}`;
+  $('#libAddBtn').onclick = () => openLibModal(cfg);
+  const rows = list.map((x, i) => {
+    const cells = cfg.row(x).map(c => `<td>${esc(c)}</td>`).join('');
+    const extra = extraActions(libTab, x);
+    return `<tr><td style="width:26px;color:var(--ink-soft);font-family:var(--mono);font-size:10px">${i+1}</td>${cells}<td class="actions">
+      <button class="btn small" onclick="openLibModal(LIB['${libTab}'],${JSON.stringify(x)})">编辑</button>
+      <button class="btn small danger" onclick="removeLib('${libTab}',${x.id},'${esc(x.name)}')">删除</button>${extra}</td></tr>`;
+  }).join('');
+  $('#libTable').innerHTML = `<table><tr><th>#</th>${cfg.headers.map(h => `<th>${h}</th>`).join('')}<th>操作</th></tr>${rows}</table>`;
+  renderLibExtra();
+}
+function extraActions(kind, x) {
+  if (kind === 'mcp') return `<button class="btn small" onclick="testMcp(${x.id})">测试连接</button>`;
+  if (kind === 'kb') return `<button class="btn small" onclick="kbDebug(${x.id})">检索调试</button>`;
+  return '';
+}
+function renderLibExtra() {
+  const box = $('#libExtra');
+  if (libTab === 'kb') {
+    const kbs = state.kbs;
+    box.innerHTML = `<h4>文档上传 / 检索调试</h4>` +
+      kbs.map(k => `<div style="margin-bottom:14px;border:1px solid var(--line);padding:10px;background:#fff">
+        <b style="color:var(--w-kb)">${esc(k.name)}</b>
+        <div style="margin-top:6px" class="doc-upload">
+          <input type="file" id="kbFile${k.id}" accept=".md,.txt,.pdf,.docx,.csv,.xlsx">
+          <button class="btn small" onclick="uploadDoc(${k.id})">上传</button>
+          <label style="font-size:11px;color:var(--ink-soft)"><input type="checkbox" id="kbQa${k.id}"> CSV QA 模板</label>
+        </div>
+        <div style="margin-top:6px;display:flex;gap:6px">
+          <input type="text" id="kbQuery${k.id}" placeholder="检索调试 query" style="flex:1;border:1px solid var(--line);padding:5px 8px;font-size:12px">
+          <button class="btn small" onclick="kbSearch(${k.id})">检索</button>
+        </div>
+        <div id="kbResult${k.id}" style="font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-top:6px"></div>
+      </div>`).join('') || '<div style="color:var(--ink-soft)">暂无知识库</div>';
+  } else {
+    box.innerHTML = '';
+  }
+}
+async function uploadDoc(kbId) {
+  const file = $(`#kbFile${kbId}`).files[0];
+  if (!file) return toast('请选择文件');
+  const form = new FormData();
+  form.append('file', file);
+  form.append('isQaCsv', $(`#kbQa${kbId}`).checked ? '1' : '0');
+  try {
+    const r = await fetch(`/api/knowledge-bases/${kbId}/documents`, { method:'POST', body: form });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d?.error?.message || `HTTP ${r.status}`);
+    toast(`已摄取 ${d.filename}：${d.vectors} 向量`, true);
+  } catch (e) { toast('上传失败：' + e.message); }
+}
+async function kbSearch(kbId) {
+  const q = $(`#kbQuery${kbId}`).value.trim();
+  const box = $(`#kbResult${kbId}`);
+  if (!q) return;
+  box.textContent = '检索中…';
+  try {
+    const d = await api(`/api/knowledge-bases/${kbId}/search`, { method:'POST', body: JSON.stringify({ query:q }) });
+    box.innerHTML = d.items.length === 0 ? '（无命中）' :
+      d.items.map(h => `<div>score=${h.score.toFixed(3)} · ${esc(h.content.slice(0,60))}</div>`).join('');
+  } catch (e) { box.textContent = '❌ ' + e.message; }
+}
+async function testMcp(id) {
+  try {
+    const d = await api(`/api/mcp-servers/${id}/test`, { method:'POST' });
+    toast(`连接 OK，工具：${d.tools.join(', ')}`, true);
+  } catch (e) { toast('连接失败：' + e.message); }
+}
+
+async function removeLib(kind, id, name) {
+  if (!confirm(`删除「${name}」？`)) return;
+  try {
+    await LIB[kind].remove(id);
+    toast('已删除', true);
+    await refreshAll();
+    renderLibrary();
+  } catch (e) { toast('删除失败：' + e.message); }
+}
+function openLibModal(cfg, existing) {
+  const fields = cfg.form.map(f => {
+    let val = existing ? existing[f.k] : '';
+    const opts = typeof f.opts === 'function' ? f.opts() : (f.opts ?? []);
+    let input;
+    if (f.type === 'textarea') input = `<textarea id="f_${f.k}" placeholder="${f.label}">${esc(val)}</textarea>`;
+    else if (f.type === 'select') input = `<select id="f_${f.k}">${opts.map(o => `<option value="${esc(o[0])}" ${String(o[0])===String(val)?'selected':''}>${esc(o[1])}</option>`).join('')}</select>`;
+    else if (f.type === 'number') input = `<input type="number" id="f_${f.k}" step="${f.step??1}" value="${esc(val)}">`;
+    else input = `<input type="text" id="f_${f.k}" value="${esc(val)}">`;
+    return `<div class="field"><label>${f.label}${f.required?' *':''}</label>${input}</div>`;
+  }).join('');
+  modal(`<h3>${existing ? '编辑' : '新增'} · ${cfg.label}</h3><div class="row" style="grid-template-columns:1fr">${fields}</div>
+    <div class="actions">
+      <button class="btn" onclick="closeModal()">取消</button>
+      <button class="btn primary" id="modalOk">保存</button>
+    </div>`);
+  $('#modalOk').onclick = async () => {
+    const body = {};
+    let miss = false;
+    for (const f of cfg.form) {
+      const el = $(`#f_${f.k}`);
+      let v = f.type === 'number' ? (el.value === '' ? undefined : Number(el.value)) : el.value;
+      if (f.type === 'select') v = f.opts === undefined ? el.value : (el.value === 'true' ? true : el.value === 'false' ? false : el.value);
+      if (f.required && (v === undefined || v === '')) { miss = true; toast(`请填写：${f.label}`); return; }
+      if (v !== undefined && v !== '') body[f.k] = v;
+    }
+    try {
+      if (existing) await cfg.update(existing.id, body);
+      else await cfg.create(body);
+      toast('已保存', true);
+      closeModal();
+      await refreshAll();
+      renderLibrary();
+      renderAssembly();
+    } catch (e) { toast('保存失败：' + e.message); }
+  };
+}
+async function kbDebug(kbId) { libTab = 'kb'; renderLibrary(); setTimeout(() => { const el = $(`#kbQuery${kbId}`); if (el) el.focus(); }, 50); }
+
+/* ============================================================
+   Agents
+   ============================================================ */
+function renderAgents() {
+  const grid = $('#agentsGrid');
+  if (state.agents.length === 0) {
+    grid.innerHTML = '<div class="panel" style="color:var(--ink-soft)">暂无 Agent —— 去装配台发布第一个智能体。</div>';
+    return;
+  }
+  grid.innerHTML = state.agents.map(a => {
+    const model = state.models.find(m => m.id === a.modelId);
+    const line = (wire, label, names) => `<div><b style="color:${wire}">${label}</b> ${esc(names.join('、') || '—')}</div>`;
+    return `<div class="agent-card">
+      <div class="name">${esc(a.name)}<span class="tag">${a.enabled ? '已发布' : '停用'}</span></div>
+      <div class="desc">${esc(a.description ?? '')}</div>
+      <div class="lines">
+        ${line(W.model, 'MODEL', [model ? `${model.name} (${model.modelId})` : `#${a.modelId}`])}
+        ${line(W.skill, 'SKILL', (a.skills ?? []).map(s => s.name))}
+        ${line(W.mcp, 'MCP', (a.mcp_servers ?? []).map(s => s.name))}
+        ${line(W.kb, 'KNOWLEDGE', (a.knowledge_bases ?? []).map(k => k.name))}
+      </div>
+      <div class="card-actions">
+        <button class="btn small primary" onclick="openTestModal('${esc(a.name)}')">▶ 运行测试</button>
+        <button class="btn small" onclick="editAgent('${a.id}','${esc(a.name)}')">编辑</button>
+        <button class="btn small danger" onclick="removeAgent(${a.id},'${esc(a.name)}')">删除</button>
+      </div>
+      <div class="run-log" id="testLog-${esc(a.name)}"></div>
+    </div>`;
+  }).join('');
+}
+function openTestModal(name) {
+  const logId = 'testLog-' + name;
+  modal(`<h3>测试 · ${esc(name)}</h3>
+    <div class="chat-box" style="margin-bottom:10px">
+      <div class="chat-msgs" id="testMsgs" style="max-height:260px"></div>
+      <div class="chat-input"><input type="text" id="testInput" placeholder="输入消息，回车发送"><button class="btn" id="testSend">发送</button></div>
+    </div>
+    <div class="run-log" id="testTrace"></div>
+    <div class="actions"><button class="btn" onclick="closeModal()">关闭</button></div>`);
+  const send = async () => {
+    const input = $('#testInput'); const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    const box = $('#testMsgs');
+    const add = (role, t) => { const d = document.createElement('div'); d.className = 'chat-msg ' + role;
+      d.innerHTML = `<div class="who">${role.toUpperCase()}</div><div class="body"></div>`; d.querySelector('.body').textContent = t;
+      box.appendChild(d); box.scrollTop = box.scrollHeight; return d; };
+    add('user', text);
+    const trace = $('#testTrace');
+    const ai = add('assistant', '');
+    trace.textContent = '';
+    try {
+      const res = await fetch('/v1/chat/completions', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ model: name, messages:[{ role:'user', content:text }], stream:true }),
+      });
+      if (!res.ok) { const e = await res.json().catch(()=>null); ai.querySelector('.body').textContent = '❌ ' + (e?.error?.message || res.status); return; }
+      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
+      const bodyEl = ai.querySelector('.body');
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream:true });
+        const lines = buf.split('\n'); buf = lines.pop() ?? '';
+        for (const line of lines) {
+          const s = line.trim();
+          if (!s.startsWith('data: ')) continue;
+          const p = s.slice(6);
+          if (p === '[DONE]') continue;
+          try {
+            const chunk = JSON.parse(p);
+            if (chunk.error) { trace.textContent = '❌ ' + chunk.error.message; continue; }
+            const delta = chunk.choices?.[0]?.delta;
+            if (delta?.content) bodyEl.textContent += delta.content;
+            if (delta?.tool_calls) {
+              const name = delta.tool_calls[0]?.function?.name;
+              if (name) trace.textContent += `⚙ 调用工具: ${name}\n`;
+            }
+          } catch {}
+        }
+      }
+      trace.textContent += '✅ 完成';
+    } catch (e) { ai.querySelector('.body').textContent = '❌ ' + e.message; }
+  };
+  $('#testSend').onclick = send;
+  $('#testInput').addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+}
+function editAgent(id, name) {
+  const a = state.agents.find(x => x.id === id);
+  if (!a) return;
+  $('#agentName').value = a.name;
+  $('#systemPrompt').value = a.systemPrompt;
+  $('#temperature').value = a.temperature ?? '';
+  $('#maxTokens').value = a.maxTokens ?? '';
+  $('#ragMode').value = a.ragMode ?? 'auto';
+  sel.model = a.modelId;
+  sel.skills = (a.skills ?? []).map(s => s.id);
+  sel.mcps = (a.mcp_servers ?? []).map(s => s.id);
+  sel.kbs = (a.knowledge_bases ?? []).map(k => k.id);
+  showView('assembly');
+  renderAssembly();
+  $('#agentName').scrollIntoView({ behavior:'smooth' });
+}
+async function removeAgent(id, name) {
+  if (!confirm(`删除 Agent「${name}」？`)) return;
+  try {
+    await api(`/api/agents/${id}`, { method:'DELETE' });
+    toast('已删除', true);
+    await refreshAll();
+    renderAgents();
+    fillRunAgentSelect();
+  } catch (e) { toast('删除失败：' + e.message); }
+}
+
+/* ============================================================
+   初始化
+   ============================================================ */
+(async function init() {
+  try {
+    await refreshAll();
+    fillRunAgentSelect();
+    showView(location.hash.slice(1) || 'assembly');
+    await refreshStatus();
+  } catch (e) {
+    const pill = $('#statusPill');
+    pill.className = 'status-pill err';
+    pill.textContent = 'API 不可用：' + e.message + ' || ' + (e.stack ? e.stack.split('\n').slice(0,3).join(' ~ ') : '');
+  }
+})();
+</script>
+</body>
+</html>
