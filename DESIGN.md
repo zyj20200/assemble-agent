@@ -459,17 +459,17 @@ Document 1 ──── * Chunk  (Chunk.embedding 向量, Chunk.kb_id 冗余索�
 
 ---
 
-## 8. 安全与运维
+## 8. 安全与运维（✅ 除标注后续项外均已实现）
 
 | 项 | MVP 方案 | 后续 |
 | --- | --- | --- |
 | API 认证 | 无（仅限本机/内网使用）；环境变量 `ASSEMBLE_API_KEY` 存在时，`/v1/*` 要求 `Authorization: Bearer <key>` | JWT / 多租户 |
-| api_key 存储 | SQLite 明文 | Fernet 加密（密钥来自环境变量） |
-| MCP 风险 | stdio 命令仅管理员在管理页配置；`test` 接口有超时与输出截断 | 命令白名单 / 沙箱 |
+| api_key 存储 | ✅ **AES-256-GCM 加密**（`ASSEMBLE_SECRET_KEY` 派生密钥，明文兼容），见 `src/security.ts` | 密钥轮换 |
+| MCP 风险 | ✅ stdio 仅管理页配置；`test` 15s 超时；工具响应 **1MB 读流截断** | 命令白名单 / 沙箱 |
 | 上传文件 | 扩展名白名单（md/txt/pdf/docx/csv/xlsx），大小限制（默认 20MB） | 病毒扫描 |
-| CORS | 默认关闭，`ASSEMBLE_ALLOW_ORIGINS` 可配置 | — |
-| 日志 | 结构化日志（请求 ID、Agent、耗时、工具轨迹） | 指标/追踪 |
-| 部署 | `node dist/index.js`，SQLite 单文件备份即全量备份 | Docker / systemd / PostgreSQL |
+| CORS | ✅ 默认关闭，`ASSEMBLE_ALLOW_ORIGINS` 逗号分隔可配置（含 OPTIONS 预检） | — |
+| 日志 | ✅ **结构化 JSON 日志**（requestId/method/path/status/durationMs，不含密钥/请求体） | 指标/追踪 |
+| 部署 | ✅ **Docker**（node:24-slim，better-sqlite3 源码编译，启动自动 seed）+ docker-compose（数据卷） | systemd / PostgreSQL |
 
 ---
 
@@ -529,7 +529,7 @@ assemble-agent/
 | **M3 对话链路** | pi-ai 模型层 + pi-agent-core 运行时 + `/v1/chat/completions`（非流式+流式） | ✅ **完成**（10 项 API 集成测试：SSE 序列/客户端工具/错误映射；真实网关验证 503 路径） |
 | **M4 组件接入** | MCP（stdio+http）+ Skills 注入 + 知识库上传/检索 | 🔄 **知识库 RAG 已落地**（含 pgvector 真库测试）；MCP/Skills 待接 |
 | **M5 管理页面** | 正式 index.html 对接全部管理 API + 对话测试 | ✅ **完成**（`web/index.html` 单文件自包含：装配台/资源库/Agents 三视图 + 真实 SSE 试运行；headless Chrome 验证 4 视图渲染） |
-| **M6 硬化** | 错误码、超时、日志、安全项（§8）、种子数据 | ⬜ 未开始 |
+| **M6 硬化** | 错误码、超时、日志、安全项（§8）、种子数据 | ✅ **完成**（结构化日志、CORS、api_key 加密、Docker 部署；98 测试全绿） |
 
 ### 10.1 决策记录（ADR 摘要）
 
