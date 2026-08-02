@@ -8,6 +8,7 @@ import { createKnowledgeBaseTool } from './kb-tool.ts';
 import type { EmbedFn } from '../rag/types.ts';
 import type { VectorStore } from '../rag/vector-store.ts';
 import { McpManager, type McpServerConfig } from '../mcp.ts';
+import { injectSkills, type SkillDef } from './skills.ts';
 
 export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
@@ -34,6 +35,8 @@ export interface AgentDefinition {
   knowledgeBase?: KnowledgeBaseRef;
   /** 关联的 MCP Server（M4） */
   mcpServers?: McpServerConfig[];
+  /** 关联技能（注入系统提示词，§6.5） */
+  skills?: SkillDef[];
 }
 
 export interface AssembleOptions {
@@ -53,6 +56,10 @@ export async function assembleAgent(def: AgentDefinition, opts: AssembleOptions)
   if (!model) {
     throw new Error(`模型未注册: ${def.providerId}/${def.modelId}`);
   }
+
+  // 技能注入：请求内 system 覆盖优先，但仍注入技能章节
+  const basePrompt = systemPromptOverride ?? def.systemPrompt;
+  const systemPrompt = injectSkills(basePrompt, def.skills ?? []);
 
   const tools: AgentTool[] = [];
   if (def.knowledgeBase) {
@@ -80,7 +87,7 @@ export async function assembleAgent(def: AgentDefinition, opts: AssembleOptions)
 
   return new Agent({
     initialState: {
-      systemPrompt: systemPromptOverride ?? def.systemPrompt,
+      systemPrompt,
       model,
       tools,
       ...(def.thinkingLevel ? { thinkingLevel: def.thinkingLevel } : {}),

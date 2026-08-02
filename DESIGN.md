@@ -421,7 +421,7 @@ Document 1 ──── * Chunk  (Chunk.embedding 向量, Chunk.kb_id 冗余索�
 
 **规模说明**：InMemory 全表扫描万级 chunk 内可用；生产直接上 pgvector（HNSW，已实测通过）。
 
-### 6.5 提示词组装（Prompt Builder）
+### 6.5 提示词组装（Prompt Builder）✅ 已落地（`src/core/agent/skills.ts`：`{{skills}}` 占位符替换 / 末尾追加 `## 可用技能`）
 
 系统提示词 = 模板 + 组件注入，规则：
 
@@ -492,7 +492,8 @@ assemble-agent/
 │   │   ├── models.ts          # pi-ai 包装：createModels + provider 注册 + 请求 key 解析
 │   │   ├── agent/
 │   │   │   ├── kb-tool.ts     # ✅ 已落地：知识库检索 AgentTool
-│   │   ├── assemble.ts      # ✅ Agent 装配（AgentDefinition + ModelRegistry → Agent）
+│   │   ├── assemble.ts      # ✅ Agent 装配（AgentDefinition + ModelRegistry → Agent，含技能注入）
+│   │   ├── skills.ts           # ✅ 技能注入（{{skills}} 占位符 / 末尾追加）
 │   │   │   └── index.ts
 │   │   ├── mcp.ts             # MCP 会话管理、工具发现/调用、test 探测
 │   │   ├── rag/               # ✅ 已落地（从 knowledge-control 移植并修复）

@@ -10,6 +10,7 @@ import type { ModelRegistry } from '../core/models.ts';
 import type { AgentDefinition } from '../core/agent/assemble.ts';
 import type { KnowledgeBaseService } from '../core/kb-service.ts';
 import type { McpServerConfig } from '../core/mcp.ts';
+import type { SkillDef } from '../core/agent/skills.ts';
 
 /** JSON 列安全解析 */
 function safeJson<T>(s: string | null): T | undefined {
@@ -55,6 +56,16 @@ export function loadAgentsFromDb(db: AppDb, kb: KnowledgeBaseService): AgentDefi
       .from(schema.agentKnowledgeBases)
       .where(eq(schema.agentKnowledgeBases.agentId, a.id))
       .all();
+    const skillLinks = db
+      .select({ skillId: schema.agentSkills.skillId })
+      .from(schema.agentSkills)
+      .where(eq(schema.agentSkills.agentId, a.id))
+      .all();
+    const skills: SkillDef[] = skillLinks
+      .map((link) => db.select().from(schema.skills).where(eq(schema.skills.id, link.skillId)).get())
+      .filter((x): x is NonNullable<typeof x> => !!x && x.enabled)
+      .map((x) => ({ name: x.name, description: x.description ?? undefined, content: x.content }));
+
     const mcpLinks = db
       .select({ mcpServerId: schema.agentMcpServers.mcpServerId })
       .from(schema.agentMcpServers)
@@ -97,6 +108,7 @@ export function loadAgentsFromDb(db: AppDb, kb: KnowledgeBaseService): AgentDefi
       modelId: model.modelId,
       temperature: a.temperature ?? undefined,
       maxTokens: a.maxTokens ?? undefined,
+      skills,
       mcpServers,
       knowledgeBase: knowledgeBaseRefs[0], // MVP：单知识库；多知识库后续支持
     });
